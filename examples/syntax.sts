@@ -3,7 +3,7 @@
 global thing 45
 global other_thing4 "hello"
 global array_thing [array 1 2 3 4]
-global another_array [arrayof $number 4]
+global another_array [array $number 4]
 
 function test argument another_arg [
 	local test "hey"
@@ -16,9 +16,11 @@ global test 5
 
 if [== $test 1] [
 	print test was 1
-] elseif [== $test 6] [
+]
+elseif [== $test 6] [
 	print test was 6
-] else [
+]
+else [
 	print test was anything else
 ]
 
@@ -26,5 +28,5 @@ global i 0
 
 loop [< $i $test] [
 	print looped to $i
-	set $i [+ $i 1]
+	set $i [+ $i 1] #optionally, "++ $i" works too
 ]
