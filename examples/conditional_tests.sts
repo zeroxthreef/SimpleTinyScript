@@ -1,0 +1,19 @@
+if "" [
+	print failure
+]
+
+if "hi" [
+	print pass
+]
+
+if $nil [
+	print fail
+]
+
+if 0 [
+	print fail
+]
+
+if 1 [
+	print pass
+]

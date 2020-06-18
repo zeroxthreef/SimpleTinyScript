@@ -1,0 +1,3 @@
+print (sin 3)
+print (cos 3)
+print (tan 3)

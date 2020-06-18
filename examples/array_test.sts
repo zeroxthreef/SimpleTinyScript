@@ -1,0 +1,70 @@
+print ============= COPY VS SET ARRAY TEST =================
+
+function printarray array {
+	print PRINTING TYPE: (typeof $array),(sizeof $array) ARRAY:
+	local i 0
+	loop(< $i (sizeof $array)) {
+		print array value: (get $array $i)
+		++ $i
+	}
+}
+
+local arraything [array "hello" "world" "test" 1 2 3 4 5]
+
+local newarraything (copy $arraything)
+#local newarraything $arraything
+
+printarray $arraything
+printarray $newarraything
+
+print then---
+
+set (get $newarraything 2) "aaahhhh"
+
+printarray $arraything
+printarray $newarraything
+
+print ========== ARRAY NESTING TEST ==============
+
+
+function printarraynested array depth {
+	print PRINTING TYPE: (typeof $array),(sizeof $array) ARRAY:
+	local i 0
+	loop(< $i (sizeof $array)) {
+        if(== (typeof (get $array $i)) 4) {
+            print STARTING NEW ARRAY
+
+            printarraynested (get $array $i) (+ $depth 1)
+        }
+        else {
+            print depth: $depth , array value: (get $array $i)
+        }
+		++ $i
+	}
+    print EXITTING ARRAY
+}
+
+local nestarr [array hello world [array 1 2 3 4 5 test] [array test a b c d e f [array g h i j k l m n o p]]]
+
+printarraynested $nestarr 0
+
+print ==================== array remove test ====================
+
+local testremovearr [array hello world test 1 2 3]
+
+printarraynested $testremovearr 0
+
+remove $testremovearr 2
+
+printarraynested $testremovearr 0
+
+
+print ==================== array insert and append test ====================
+
+local testinsertarr [array hello test 1 2 3]
+
+printarraynested $testinsertarr 0
+
+insert $testinsertarr 1 world
+
+printarraynested $testinsertarr 0

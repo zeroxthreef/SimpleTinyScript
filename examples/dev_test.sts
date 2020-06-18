@@ -1,0 +1,112 @@
+print hello world
+print "hello world"
+print "hello" "world"
+print testtt [pass hello] [pass "world"] [pass "12345"] test [pass yo]
+print [pass heyo] [pass hey] [[[[pass yo]]]] cool
+
+
+pass [pass hey test] [pass "yo"] [pass cool] [pass yo?]
+
+print [string hey " " cool " " 65.67 " " 0xDEADBEEF " " $does_not_exist]
+
+global value_thing "hey"
+global value_thing2 "hey2"
+
+print [global value_thing]
+
+print [global value_thing_not_exist]
+
+print cool, this thing is: $value_thing
+print another: $value_thing
+print another: $value_thing
+print another: $value_thing
+
+print test: $local_test
+
+local local_test "hello"
+local testvar "THIS IS HERE OK?"
+
+print THIS IS THE THING: $testvar
+
+print test2: $local_test
+
+print [string hey yo [string neat]] [string neat2]
+
+global test 5
+
+print type: [typeof $test]
+print size: [sizeof 5]
+
+if(>= "hello world" "hello world") {
+	print neato
+}
+else {
+	print wasnt equal
+}
+
+#if [== $test 1] [
+#	print test was 1
+#]
+#elseif [== $test 6] [
+#	print test was 6
+#]
+#else [
+#	print test was anything else
+#]
+
+print [+ 1 2 3 4 5 6 7 8]
+print [- 8 3]
+print [* 8 8]
+print [/ 8 2 2]
+print [% 9 8]
+print [& 0xFE 1234]
+print [<< 1 6]
+print [** 8 2]
+
+if(&& 1 1 1 1 1 (== 600 600)){
+	print cooooooooooooooool
+}
+
+print up next, or
+
+if(|| 0 [print hello] [print SHOULD SHORT CIRCUIT AND NOT PRINT] 0){
+	print haha, ok
+}
+
+function testfunc arg arg1 arg2 {
+	print HEY, I CAME FROM THE FUNCTION!
+	print arguments for this: $arg $arg1 $arg2 $...
+	print argument types: arg: (typeof $arg), arg1: (typeof $arg1), arg2: (typeof $arg2), ...: (typeof $...)
+	print amount of extra args: (sizeof $...)
+}
+
+function testfunc2 {
+	print OK COOOOOL
+	local i 0
+	loop(< $i (sizeof $...)) {
+		print array value: (get $... $i)
+		local i (+ $i 1)
+	}
+	print looped $i times
+}
+
+testfunc test test2 hello "this should be part of the ... args" "same here"
+
+print ==============
+
+testfunc2
+testfunc2 a b c d e f g
+
+local original "test"
+local copything (copy $original)
+#local copything $original
+
+print | $original | -- | $copything |
+
+set $original 6
+
+print | $original | -- | $copything |
+
+print =========================
+
+import array_tests.sts
