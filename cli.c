@@ -394,7 +394,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 
 	if(!ret)
 		ret = sts_defaults(script, action, args, locals, previous);
-	else if(!ret && action->type == STS_STRING) /* execute a shell command instead */
+	if(!ret && action->type == STS_STRING) /* execute a shell command instead */
 	{
 		STS_STRING_ASSEMBLE(temp_str, "%s", action->string, temp_str, " ");
 		ACTION_BEGIN_ARGLOOP
