@@ -8,12 +8,34 @@
 # file parsing, and other uncategorized utility functions.
 
 
+# stdlib globals ========================
+
+
+global stdlib-current-error ""
+
+# sts type globals (are functions to make constant)
+function STS_EXTERNAL {copy 0}
+function STS_NIL {copy 1}
+function STS_NUMBER {copy 2}
+function STS_STRING {copy 3}
+function STS_ARRAY {copy 4}
+function STS_FUNCTION {copy 5}
+
 
 # hashmap implementation ================
 
 
 function hashmap {
+    local ret $nil
 
+    if(% (sizeof $... 2)) {
+        
+    }
+    else {
+
+    }
+
+    pass ret
 }
 
 function hashmap-get map key {
@@ -63,3 +85,19 @@ function string-replace string replacement {
 
 # uncategorized =========================
 
+function stdlib-get-error {
+    local ret "no error"
+
+    if(== (typeof $stdlib-current-error) (STS_STRING)) {
+        set $ret (copy $stdlib-current-error)
+    }
+
+    # clear the error
+    set $stdlib-current-error $nil
+    
+    pass $ret
+}
+
+function stdlib-set-error component_str error_str {
+    set $stdlib-current-error (string $component_str ": " $error_str)
+}

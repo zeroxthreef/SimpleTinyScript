@@ -1,0 +1,14 @@
+import stdlib.sts
+
+#function test_errors {
+    print ============ testing the error system ==============
+    stdlib-set-error test "something broke"
+
+    print (stdlib-get-error)
+    print should be no error: (stdlib-get-error)
+}
+
+
+# all tests below =====
+
+test_errors
