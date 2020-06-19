@@ -211,9 +211,9 @@ char *read_file(sts_script_t *script, char *file, unsigned int *size)
 sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_map_row_t **locals, sts_value_t **previous)
 {
 	sts_value_t *ret = NULL, *eval_value = NULL, *temp_value = NULL, *first_arg_value = NULL, *second_arg_value = NULL;
-	FILE *proc_pipe = NULL;
+	FILE *proc_pipe = NULL, *file = NULL;
 	char *temp_str = NULL, *popen_buf = NULL, buf[1024];
-	unsigned int size = 0, total = 0, popen_buf_init = 0;
+	unsigned int size = 0, total = 0, popen_buf_init = 0, temp_uint;
 
 
 	ACTION(if, "pipeout")
@@ -283,6 +283,111 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		free(temp_str);
 		if(!sts_value_reference_decrement(script, first_arg_value))
 			STS_ERROR_SIMPLE("could not decrement references for first argument in pipeout action");
+	}
+	ACTION(else if, "file-read") /* reads files into a string */
+	{
+		if(args->next)
+		{
+			EVAL_ARG(args->next);
+			if(eval_value->type != STS_STRING)
+			{
+				fprintf(stderr, "the file-read action requires a string argument for the path\n");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in file-read action");
+				return NULL;
+			}
+
+			if(!(file = fopen(eval_value->string, "r")))
+			{
+				VALUE_INIT(ret, STS_NIL);
+			}
+			else
+			{
+				fseek(file, 0, SEEK_END);
+				temp_uint = ftell(file);
+				fseek(file, 0, SEEK_SET);
+
+				if(!(temp_str = calloc(temp_uint + 1, sizeof(char))))
+				{
+					fprintf(stderr, "could not alocate string in read-file\n");
+					VALUE_INIT(ret, STS_NIL);
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in file-read action");
+					return ret;
+				}
+				
+				if(fread(temp_str, temp_uint, sizeof(char), file) <= 0)
+				{
+					fprintf(stderr, "could not read file in read-file\n");
+				}
+
+				VALUE_INIT(ret, STS_STRING);
+				ret->string = temp_str;
+
+				fclose(file);
+			}
+
+			if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in file-read action");
+		}
+		else {STS_ERROR_SIMPLE("file-read action requires a single string path argument"); return NULL;}
+	}
+	ACTION(else if, "file-write") /* writes a string to a file */
+	{
+		if(args->next && args->next->next)
+		{
+			EVAL_ARG(args->next); first_arg_value = eval_value;
+			EVAL_ARG(args->next->next);
+
+			if(first_arg_value->type != STS_STRING && eval_value->type != STS_STRING)
+			{
+				fprintf(stderr, "file-write requires 2 string arguments only\n");
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in file-write action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in file-write action");
+				return NULL;
+			}
+
+			if(!(file = fopen(first_arg_value->string, "w")))
+			{
+				VALUE_INIT(ret, STS_NIL);
+			}
+			else
+			{
+				VALUE_FROM_NUMBER(ret, fwrite(eval_value->string, sizeof(char), strlen(eval_value->string), file));
+				fclose(file);
+			}
+			
+			if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in file-write action");
+			if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in file-write action");
+		}
+		else {STS_ERROR_SIMPLE("file-write action requires at least 2 string arguments"); return NULL;}
+	}
+	ACTION(else if, "file-append") /* appends a string to a file */
+	{
+		if(args->next && args->next->next)
+		{
+			EVAL_ARG(args->next); first_arg_value = eval_value;
+			EVAL_ARG(args->next->next);
+
+			if(first_arg_value->type != STS_STRING && eval_value->type != STS_STRING)
+			{
+				fprintf(stderr, "file-append requires 2 string arguments only\n");
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in file-append action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in file-append action");
+				return NULL;
+			}
+
+			if(!(file = fopen(first_arg_value->string, "a")))
+			{
+				VALUE_INIT(ret, STS_NIL);
+			}
+			else
+			{
+				VALUE_FROM_NUMBER(ret, fwrite(eval_value->string, sizeof(char), strlen(eval_value->string), file));
+				fclose(file);
+			}
+			
+			if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in file-append action");
+			if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in file-append action");
+		}
+		else {STS_ERROR_SIMPLE("file-append action requires at least 2 string arguments"); return NULL;}
 	}
 
 	if(!ret)
