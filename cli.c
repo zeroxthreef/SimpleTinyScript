@@ -1,3 +1,5 @@
+/* this file is released into the public domain */
+
 #define STS_IMPLEMENTATION
 #include "simpletinyscript.h"
 
