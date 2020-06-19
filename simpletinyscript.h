@@ -324,6 +324,7 @@ sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_map_row_t **loc
 	sts_map_row_t *row = NULL;
 	sts_value_t *ret = NULL, *temp = NULL;
 	#define EVAL_PREVIOUS_REFDEC() if(!sts_value_reference_decrement(script, *previous)) STS_ERROR_SIMPLE("could not decrement references in previous")
+	#define STS_EVAL_ERROR_PRINT do{ STS_ERROR_PRINT(STS_ERROR_PRINT_ARG0 "eval error: line %u" STS_ERROR_CONCAT, ast->line);}while(0)
 	if(!locals) locals = &script->globals; /* make locals be pretty much globals outside of functions */
 	if(!previous)
 	{
@@ -355,7 +356,7 @@ sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_map_row_t **loc
 				else if(ast->child->type != STS_NODE_EXPRESSION) /* an expression with a starting value */
 				{
 					if(!(temp = sts_eval(script, ast->child, locals, previous, single))){STS_ERROR_SIMPLE("could not eval action"); return NULL;} /* make an action value for the router. Because it is evaluated, it means any kind of substitution works */
-					if(!(ret = script->router(script, temp, ast->child, locals, previous))){return NULL;} /* decide what to do based off of the starting value */
+					if(!(ret = script->router(script, temp, ast->child, locals, previous))){STS_EVAL_ERROR_PRINT; return NULL;} /* decide what to do based off of the starting value */
 					if(!sts_value_reference_decrement(script, temp)){STS_ERROR_SIMPLE("could not decrement action references"); return NULL;} /* clean up the action value used to control what the router does */
 					EVAL_PREVIOUS_REFDEC(); *previous = ret; STS_VALUE_REFINC(script, ret); /* carry the previous value along the list of expressions */
 				}
@@ -365,6 +366,7 @@ sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_map_row_t **loc
 		break;
 	}
 	if(created_previous) if(!sts_value_reference_decrement(script, *previous)) {STS_ERROR_SIMPLE("could not decrement previous value references"); return NULL;}
+	if(!ret){ STS_EVAL_ERROR_PRINT;}
 	return ret;
 }
 
@@ -987,7 +989,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		ACTION_SINGLE_NUMERIC(script, floor)
 		ACTION_SINGLE_NUMERIC(script, ceil)
 	} /* end of string comparison for action. Up next is global (local really) function search */
-	if(!ret && action->type == STS_STRING && (row = sts_map_get(locals, action->string, strlen(action->string))) && ((sts_value_t *)row->value)->type == STS_FUNCTION) /* look for functions to call */
+	if(!ret && action->type == STS_STRING && ( (row = sts_map_get(locals, action->string, strlen(action->string))) || (row = sts_map_get(&script->globals, action->string, strlen(action->string))) ) && ((sts_value_t *)row->value)->type == STS_FUNCTION) /* look for functions to call */
 	{
 		VALUE_INIT(temp_value, STS_ARRAY); if(!temp_value){STS_ERROR_SIMPLE("could not create elipses value"); return NULL;}
 		if(!sts_map_add_set(&new_locals, "...", strlen("..."), temp_value))
