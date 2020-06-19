@@ -63,17 +63,3 @@ function string-replace string replacement {
 
 # uncategorized =========================
 
-
-# this function is really hacky. Because there is no native
-# call function, it creates a temporary global function and
-# calls it. Care must be taken to write functions with wrapper
-# functions to translate elipses arguments into real calls
-
-# TODO: this will not actually function because function bodies
-# that are functions will not eval. TODO: fix it.
-
-function call func {
-    function __internal_stdlib_tempfunc $func
-
-    __internal_stdlib_tempfunc $...
-}

@@ -10,6 +10,7 @@ function test argument another_arg [
 	print "hello " argument
 	print "semicolon test";
 	
+	pass "this will be returned"
 ]
 
 global test 5

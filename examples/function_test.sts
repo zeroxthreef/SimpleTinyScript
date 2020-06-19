@@ -1,0 +1,41 @@
+function testfunc arg {
+    print this function has been executed, and the value passed: $arg
+
+    # return a string
+    pass "I AM THE RETURNED VALUE"
+}
+
+print (testfunc hello)
+
+function functioninside arg {
+    local infunc (function $nil arg0 arg1 {print got arguments $arg0 $arg1 $...})
+
+    print calling first inside function
+    call $infunc hello $arg
+
+    set $infunc (function $nil {print got $...})
+
+    print calling second inside function
+    call $infunc $arg
+
+    print calling third inside function
+    call $infunc
+}
+
+functioninside world
+
+print ============== test local scope functions ==============
+
+function containslocalfunctions arg {
+    function localtest arg {
+        print this was called inside a surrounding function
+        pass (string "hello " $arg)
+    }
+
+    print (localtest $arg)
+}
+
+containslocalfunctions world
+
+# uncomment to test that locals are cleaned up upon function exit
+# localtest hello? # this should cause an error and a crash because it doesnt exist

@@ -672,7 +672,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 
 				if(temp_value_arg->type == STS_STRING) /* only put the function in global var space if a string for function name */
 				{
-					sts_map_add_set(&script->globals, temp_value_arg->string, strlen(temp_value_arg->string), ret);
+					sts_map_add_set(locals, temp_value_arg->string, strlen(temp_value_arg->string), ret);
 					STS_VALUE_REFINC(script, ret);
 				}
 
@@ -811,6 +811,38 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in import action");
 			}
 			else {STS_ERROR_SIMPLE("import action requires at least 2 arguments"); return NULL;}
+		}
+		ACTION(else if, "call") /* call function */
+		{
+			if(args->next)
+			{
+				EVAL_ARG(args->next); temp_value_arg = eval_value;
+				if(temp_value_arg->type != STS_FUNCTION){ STS_ERROR_SIMPLE("the call action requires the first argument to be a function value"); return NULL;}
+				args = args->next;
+				VALUE_INIT(temp_value, STS_ARRAY); if(!temp_value){STS_ERROR_SIMPLE("could not create elipses value in call action"); return NULL;}
+				if(!sts_map_add_set(&new_locals, "...", strlen("..."), temp_value))
+				{
+					STS_ERROR_SIMPLE("could not create local scope in call action"); return NULL;
+				}
+				ACTION_BEGIN_ARGLOOP
+					STS_VALUE_REFINC(script, eval_value);
+					if(i < temp_value_arg->function.argument_identifiers->array.length) /* create identifiers for each argument */
+					{
+						if(!sts_map_add_set(&new_locals, temp_value_arg->function.argument_identifiers->array.data[i]->string, strlen(temp_value_arg->function.argument_identifiers->array.data[i]->string), eval_value))
+						{
+							STS_ERROR_SIMPLE("could not create local scope in call action"); return NULL;
+						}
+					}
+					else /* if extra arguments passed, put in elipses */
+						STS_ARRAY_APPEND_INSERT(temp_value, eval_value, i);
+					++i;
+				ACTION_END_ARGLOOP
+				if(i < temp_value_arg->function.argument_identifiers->array.length){STS_ERROR_SIMPLE("too few arguments provided to function provided to call action"); return NULL;}
+				ret = sts_eval(script, temp_value_arg->function.body, &new_locals, NULL, 0);
+				STS_DESTROY_MAP(new_locals, NULL);
+				if(!sts_value_reference_decrement(script, temp_value_arg)) STS_ERROR_SIMPLE("could not decrement references for first argument in call action");
+			}
+			else {STS_ERROR_SIMPLE("call action requires at least 1 argument"); return NULL;}
 		}
 		ACTION(else if, "&&")
 		{
@@ -954,8 +986,8 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		ACTION_SINGLE_NUMERIC(script, fabs)
 		ACTION_SINGLE_NUMERIC(script, floor)
 		ACTION_SINGLE_NUMERIC(script, ceil)
-	} /* end of string comparison for action. Up next is global function search */
-	if(!ret && (row = sts_map_get(&script->globals, action->string, strlen(action->string))) && ((sts_value_t *)row->value)->type == STS_FUNCTION) /* look for functions to call */
+	} /* end of string comparison for action. Up next is global (local really) function search */
+	if(!ret && action->type == STS_STRING && (row = sts_map_get(locals, action->string, strlen(action->string))) && ((sts_value_t *)row->value)->type == STS_FUNCTION) /* look for functions to call */
 	{
 		VALUE_INIT(temp_value, STS_ARRAY); if(!temp_value){STS_ERROR_SIMPLE("could not create elipses value"); return NULL;}
 		if(!sts_map_add_set(&new_locals, "...", strlen("..."), temp_value))
@@ -997,7 +1029,7 @@ int sts_value_copy(sts_script_t *script, sts_value_t *dest, sts_value_t *source,
 		case STS_STRING: if(dest->string) STS_FREE(dest->string); break;
 		case STS_EXTERNAL: if(dest->external.refdec) if(dest->external.refdec((script), dest)) STS_ERROR_SIMPLE("could not decrement external data"); break;
 		case STS_FUNCTION:
-			if(!sts_value_reference_decrement(script, dest->function.argument_identifiers)) STS_ERROR_SIMPLE("could not decrement references for argument identifiers in the destination value");
+			if(dest->function.argument_identifiers) if(!sts_value_reference_decrement(script, dest->function.argument_identifiers)) STS_ERROR_SIMPLE("could not decrement references for argument identifiers in the destination value");
 		break;
 	}
 	dest->type = source->type;
