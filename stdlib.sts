@@ -1,0 +1,79 @@
+# this file is released into the public domain
+
+# This is the STS standard library. It is written in STS
+# instead of C to keep the source of the interpreter
+# smaller than it would be if this were entirely C.
+
+# The following implements hashmaps, string management,
+# file parsing, and other uncategorized utility functions.
+
+
+
+# hashmap implementation ================
+
+
+function hashmap {
+
+}
+
+function hashmap-get map key {
+
+}
+
+function hashmap-set map key value {
+
+}
+
+function hashmap-verify map {
+
+}
+
+
+# string management =====================
+
+
+function string-tokenize string token {
+
+}
+
+function string-range string start end {
+
+}
+
+function string-search string needle {
+
+}
+
+function string-rsearch string needle {
+    
+}
+
+function string-insert string position instring {
+
+}
+
+function string-remove string position {
+
+}
+
+function string-replace string replacement {
+
+}
+
+
+# uncategorized =========================
+
+
+# this function is really hacky. Because there is no native
+# call function, it creates a temporary global function and
+# calls it. Care must be taken to write functions with wrapper
+# functions to translate elipses arguments into real calls
+
+# TODO: this will not actually function because function bodies
+# that are functions will not eval. TODO: fix it.
+
+function call func {
+    function __internal_stdlib_tempfunc $func
+
+    __internal_stdlib_tempfunc $...
+}
