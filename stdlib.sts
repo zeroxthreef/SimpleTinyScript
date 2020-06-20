@@ -219,15 +219,70 @@ function string-tokenize string token {
 }
 
 function string-range string start end {
+    local ret $nil
+    local i 0
 
+
+    if(&& [<= $start $end] [< $start (sizeof $string)] [< $end (sizeof $string)] [<= 0 $start] [<= 0 $end]) {
+        set $i $start
+        set $ret ""
+        loop(<= $i $end) {
+            set $ret (string $ret [get $string $i])
+
+            ++ $i
+        }
+    }
+    else {
+        stdlib-set-error string "the range must be inside the bounds of the string length - 1"
+    }
+
+    pass $ret
 }
 
 function string-search string needle {
+    local ret -1
+    local break 0
+    local i 0
 
+
+    if(< (sizeof $string) (sizeof $needle)) {
+        stdlib-set-error string "the needle must be as big or smaller than the source string"
+        ++ $break
+    }
+
+    loop(&& [< $i [- (sizeof $string) (sizeof $needle) -1]] [! $break]) {
+        if(== (string-range $string $i (+ $i [- (sizeof $needle) 1])) $needle) {
+            set $ret $i
+            ++ $break
+        }
+
+        ++ $i
+    }
+
+    pass $ret
 }
 
 function string-rsearch string needle {
-    
+    local ret -1
+    local break 0
+    local i [- (sizeof $string) (sizeof $needle)]
+
+
+    if(< (sizeof $string) (sizeof $needle)) {
+        stdlib-set-error string "the needle must be as big or smaller than the source string"
+        ++ $break
+    }
+
+    loop(&& [>= $i 0] [! $break]) {
+        if(== (string-range $string $i (+ $i [- (sizeof $needle) 1])) $needle) {
+            set $ret $i
+            #++ $break
+        }
+
+        -- $i
+    }
+
+    pass $ret
 }
 
 function string-insert string position instring {

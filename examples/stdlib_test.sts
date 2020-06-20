@@ -44,8 +44,23 @@ function test_debug_string {
     print should be a debug print of var: $res
 }
 
+function test_string_utils {
+    print ============ testing string utils ==============
+    local source_str "hello world"
+    local test_str $nil
+
+    set $test_str (string-range $source_str 1 4)
+
+    print string range test: $test_str
+
+    print found in string search at: (string-search $source_str "rld")
+
+    print found in reverse string search at: (string-rsearch $source_str "o")
+}
+
 # all tests below =====
 
 test_errors
 test_hashmap
 test_debug_string
+test_string_utils
