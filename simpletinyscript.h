@@ -734,7 +734,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(!sts_value_reference_decrement(script, temp_value_arg)) STS_ERROR_SIMPLE("could not decrement references for first argument in set action");
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in set action");
 			}
-			else {STS_ERROR_SIMPLE("get action requires at least 2 arguments"); return NULL;}
+			else {STS_ERROR_SIMPLE("set action requires at least 2 arguments"); return NULL;}
 		}
 		ACTION(else if, "array") /* creates an array of arguments */
 		{
