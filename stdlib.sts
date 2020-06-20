@@ -105,15 +105,86 @@ function hashmap-get map key {
         }
     }
 
+    if(== $ret $nil) {
+        stdlib-set-error hashmap "could not find value for key provided"
+    }
+
     pass $ret
 }
 
 function hashmap-exists map key {
+    local ret 1
 
+
+    if(&& [== [hashmap-get $map $key] $nil] [== (stdlib-get-error) "hashmap: could not find value for key provided"]) {
+        set $ret 0
+    }
+
+    pass $ret
 }
 
+# hashmap-get returns 0 if the key already existed and 1 if a new one had to be created
 function hashmap-set map key value {
+    local ret $nil
+    local row $nil
+    local hash $nil
+    local break 0
+    local i 0
 
+    if(&& [!= $map (STS_ARRAY)] [!= $key (STS_STRING)]) {
+        stdlib-set-error hashmap "the map arg must be an array and the key must be a string"
+    }
+    else {
+        set $hash (string-hash $key)
+
+        loop(&& [< $i (sizeof $map)] [! $break]) {
+            if(== $hash [get [get $map $i] 0]) {
+                set [get [get $map $i] 2] $value
+                set $ret 0
+                ++ $break
+            }
+
+            ++ $i
+        }
+    }
+
+    # add new key instead
+    if(== $ret $nil) {
+        set $row [array (string-hash $key) $key $value]
+
+        insert $map (sizeof $map) $nil
+        set (get $map [- (sizeof $map) 1]) $row
+
+        set $ret 1
+    }
+
+    pass $ret
+}
+
+function hashmap-remove map key {
+    local ret 0
+    local hash $nil
+    local break 0
+    local i 0
+
+    if(&& [!= $map (STS_ARRAY)] [!= $key (STS_STRING)]) {
+        stdlib-set-error hashmap "the map arg must be an array and the key must be a string"
+    }
+    else {
+        set $hash (string-hash $key)
+
+        loop(&& [< $i (sizeof $map)] [! $break]) {
+            if(== $hash [get [get $map $i] 0]) {
+                remove $map $i
+                set $ret 1
+                ++ $break
+            }
+
+            ++ $i
+        }
+    }
+
+    pass $ret
 }
 
 function hashmap-verify map {
@@ -188,7 +259,7 @@ function string-value-print value {
         if(!= (typeof $ret) (STS_STRING)) {set $ret (string $value)}
     }
     elseif(== (typeof $value) (STS_ARRAY)) {
-        if(!= (typeof $ret) (STS_STRING)) {set $ret "[array:"}
+        if(!= (typeof $ret) (STS_STRING)) {set $ret (string "[array (" (sizeof $value) " elements):")}
         
         loop(< $i (sizeof $value)) {
             set $ret (string $ret ", " [string-value-print (get $value $i)])

@@ -18,6 +18,20 @@ function test_hashmap {
 
     print getting a value from the hashmap: (hashmap-get $map key1)
     print attempting to get a value from a nonexistant key: (hashmap-get $map notkey)
+
+    print testing that keys exist: (hashmap-exists $map key2)
+
+    hashmap-set $map key2 "hi"
+
+    print map with keys after setting key2: (string-value-print $map)
+
+    hashmap-set $map key3 "hey"
+
+    print map with keys after creating a new key: (string-value-print $map)
+
+    hashmap-remove $map key1
+
+    print map with keys after removing key1: (string-value-print $map)
 }
 
 function test_debug_string {
