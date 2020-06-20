@@ -11,9 +11,13 @@ function test_errors {
 function test_hashmap {
     print ============ testing hashmaps ==============
     local map_empty (hashmap)
-    local map (hashmap key0 "hello world" key2 "hello world 2")
+    local map (hashmap key1 "hello world" key2 "hello world 2")
 
+    print empty hashmap: (string-value-print $map_empty)
+    print map with keys: (string-value-print $map)
 
+    print getting a value from the hashmap: (hashmap-get $map key1)
+    print attempting to get a value from a nonexistant key: (hashmap-get $map notkey)
 }
 
 function test_debug_string {

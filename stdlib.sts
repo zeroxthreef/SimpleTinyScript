@@ -24,21 +24,91 @@ function STS_FUNCTION {copy 5}
 
 # hashmap implementation ================
 
+# hashmap structure:
+#   [array
+#       [array *hash* *key string* *value*]
+#       [array *hash* *key string* *value*]
+#       ...
+#   ]
 
 function hashmap {
     local ret $nil
+    local row $nil
+    local break 0
+    local i 0
 
-    if(% (sizeof $...) 2) {
+    # TODO: possibly insert at 0 so its 3 less function calls
+
+    if(! (sizeof $...)) {
+        set $ret [array]
+    }
+    elseif(% (sizeof $...) 2) {
         stdlib-set-error hashmap "arguments provided were not an even number"
     }
     else {
-        print making hashmap
+        set $ret [array]
+
+        loop(&& [< $i (sizeof $...)] [! $break]) {
+            if(!= (typeof [get $... $i]) (STS_STRING)) {
+                stdlib-set-error hashmap "keys need to be strings"
+                set $ret $nil
+                ++ $break
+            }
+            else {
+                set $row [array (string-hash [get $... $i]) (get $... $i) (get $... (+ $i 1))]
+
+                # theres a quirk with the language that results in just inserting the literal
+                # row value itself. This makes all rows the extact same and just duplicates forever.
+                # The solution is to just create space in the array and set the new space to
+                # the new row. The set action shallow copies the value so the array itself is
+                # duplicated but all row values are just references to the originals passed.
+                # The most important part is initializing the space with anything that is generated
+                # rather than part of the ast (so literals will NOT work). $nil is special because
+                # the eval function creates a new nil value every time it is used. This makes it
+                # perfect for this.
+
+                insert $ret (sizeof $ret) $nil
+                set (get $ret [- (sizeof $ret) 1]) $row
+
+
+                # unfortunately, this will not work
+
+                # insert $ret (sizeof $ret) $row
+            }
+
+            += $i 2
+        }
     }
 
-    pass ret
+    pass $ret
 }
 
 function hashmap-get map key {
+    local ret $nil
+    local hash $nil
+    local break 0
+    local i 0
+
+    if(&& [!= $map (STS_ARRAY)] [!= $key (STS_STRING)]) {
+        stdlib-set-error hashmap "the map arg must be an array and the key must be a string"
+    }
+    else {
+        set $hash (string-hash $key)
+
+        loop(&& [< $i (sizeof $map)] [! $break]) {
+            if(== $hash [get [get $map $i] 0]) {
+                set $ret [get [get $map $i] 2]
+                ++ $break
+            }
+
+            ++ $i
+        }
+    }
+
+    pass $ret
+}
+
+function hashmap-exists map key {
 
 }
 
@@ -131,8 +201,27 @@ function string-value-print value {
         if(!= (typeof $ret) (STS_STRING)) {set $ret (string $value)}
     }
     elseif(== (typeof $value) (STS_STRING)) {
-        if(!= (typeof $ret) (STS_STRING)) {set $ret (string $value)}
+        if(!= (typeof $ret) (STS_STRING)) {set $ret (string "\"" $value "\"")}
     }
 
     pass $ret
 }
+
+function expr { # turn arguments into an expression and evaluate it
+    local $ret 0
+
+
+
+    pass $ret
+}
+
+function enum {
+    # create a bunch of locals
+}
+
+function += lvalue rvalue {set $lvalue (+ $lvalue $rvalue); pass $lvalue} # because all arguments are passed by value, this passes the value and performs the operation on it
+function -= lvalue rvalue {set $lvalue (- $lvalue $rvalue); pass $lvalue}
+function *= lvalue rvalue {set $lvalue (* $lvalue $rvalue); pass $lvalue}
+function /= lvalue rvalue {set $lvalue (/ $lvalue $rvalue); pass $lvalue}
+function %= lvalue rvalue {set $lvalue (% $lvalue $rvalue); pass $lvalue}
+function **= lvalue rvalue {set $lvalue (** $lvalue $rvalue); pass $lvalue}
