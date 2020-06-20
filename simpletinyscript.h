@@ -95,6 +95,7 @@ struct sts_value_t
 struct sts_script_t
 {
 	char *name;
+	void *userdata;
 	sts_node_t *script;
 	sts_map_row_t *globals, *functions;
 	char *(*read_file)(sts_script_t *script, char *file, unsigned int *size);
