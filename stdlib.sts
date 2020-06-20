@@ -187,8 +187,27 @@ function hashmap-remove map key {
     pass $ret
 }
 
-function hashmap-verify map {
+# because keys are passed by reference and stored in the row rather than
+# copied into the row, the key could change at some point and thats mostly
+# ok, but the string hash needs to be updated as well. Call this if theres
+# a possibility that the keys updated in the hashmap
+function hashmap-update map {
+    local ret $nil
+    local i 0
 
+
+    if(!= $map (STS_ARRAY)) {
+        stdlib-set-error hashmap "the map arg must be an array"
+    }
+    else {
+        loop(< $i (sizeof $map)) {
+            set [get [get $map $i] 0]   (string-hash [get [get $map $i] 1])
+
+            ++ $i
+        }
+    }
+
+    pass $ret
 }
 
 
