@@ -1,6 +1,6 @@
 import stdlib.sts
 
-#function test_errors {
+function test_errors {
     print ============ testing the error system ==============
     stdlib-set-error test "something broke"
 
@@ -8,7 +8,26 @@ import stdlib.sts
     print should be no error: (stdlib-get-error)
 }
 
+function test_hashmap {
+    print ============ testing hashmaps ==============
+    local map_empty (hashmap)
+    local map (hashmap key0 "hello world" key2 "hello world 2")
+
+
+}
+
+function test_debug_string {
+    print ============ testing debug strings ==============
+    local res ""
+    local var [array 1 2 3 $nil [array hello (function $nil arg0 arg1 {}) world [array a b c d e] [array hello?]] 4 5]
+
+    set $res (string-value-print $var)
+
+    print should be a debug print of var: $res
+}
 
 # all tests below =====
 
 test_errors
+test_hashmap
+test_debug_string

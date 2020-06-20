@@ -28,11 +28,11 @@ function STS_FUNCTION {copy 5}
 function hashmap {
     local ret $nil
 
-    if(% (sizeof $... 2)) {
-        
+    if(% (sizeof $...) 2) {
+        stdlib-set-error hashmap "arguments provided were not an even number"
     }
     else {
-
+        print making hashmap
     }
 
     pass ret
@@ -100,4 +100,39 @@ function stdlib-get-error {
 
 function stdlib-set-error component_str error_str {
     set $stdlib-current-error (string $component_str ": " $error_str)
+}
+
+# returns a string of a recursively indexed value. Useful for debugging data structures
+function string-value-print value {
+    local ret $nil
+    local i 0
+
+
+    if(== (typeof $value) (STS_NIL)) {
+        if(!= (typeof $ret) (STS_STRING)) {set $ret (string $value)}
+    }
+    elseif(== (typeof $value) (STS_FUNCTION)) {
+        if(!= (typeof $ret) (STS_STRING)) {set $ret (string $value)}
+    }
+    elseif(== (typeof $value) (STS_EXTERNAL)) {
+        if(!= (typeof $ret) (STS_STRING)) {set $ret (string $value)}
+    }
+    elseif(== (typeof $value) (STS_ARRAY)) {
+        if(!= (typeof $ret) (STS_STRING)) {set $ret "[array:"}
+        
+        loop(< $i (sizeof $value)) {
+            set $ret (string $ret ", " [string-value-print (get $value $i)])
+            ++ $i
+        }
+
+        set $ret (string $ret "]")
+    }
+    elseif(== (typeof $value) (STS_NUMBER)) {
+        if(!= (typeof $ret) (STS_STRING)) {set $ret (string $value)}
+    }
+    elseif(== (typeof $value) (STS_STRING)) {
+        if(!= (typeof $ret) (STS_STRING)) {set $ret (string $value)}
+    }
+
+    pass $ret
 }
