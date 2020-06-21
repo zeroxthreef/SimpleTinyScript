@@ -373,10 +373,8 @@ function string-replace string replacee replacement {
     if(! $replaced) {
         set $ret (copy $string)
     }
-    else {
-        if(< $last [sizeof $string]) {
-            set $ret [string $ret (string-range $string $last [- (sizeof $string) 1])]
-        }
+    elseif(< $last [sizeof $string]) { # copy the remaining part of the string if there is any
+        set $ret [string $ret (string-range $string $last [- (sizeof $string) 1])]
     }
 
     pass $ret
