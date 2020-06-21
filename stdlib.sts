@@ -218,6 +218,10 @@ function string-tokenize string token {
 
 }
 
+function string-combine array between_string {
+
+}
+
 function string-range string start end {
     local ret $nil
     local i 0
@@ -239,6 +243,7 @@ function string-range string start end {
     pass $ret
 }
 
+# optionally takes one more argument for an offset from the start
 function string-search string needle {
     local ret -1
     local break 0
@@ -248,6 +253,10 @@ function string-search string needle {
     if(< (sizeof $string) (sizeof $needle)) {
         stdlib-set-error string "the needle must be as big or smaller than the source string"
         ++ $break
+    }
+
+    if(&& [== (sizeof $...) 1] [== (typeof (get $... 0)) (STS_NUMBER)] [< (get $... 0) (sizeof $string)]) {
+        set $i (get $... 0)
     }
 
     loop(&& [< $i [- (sizeof $string) (sizeof $needle) -1]] [! $break]) {
@@ -286,15 +295,91 @@ function string-rsearch string needle {
 }
 
 function string-insert string position instring {
+    local ret $nil
 
+
+    if(>= $position 0) {
+        if(>= $position (sizeof $string)) { # append
+            set $ret (string $string $instring)
+        }
+        elseif(&& [< $position (sizeof $string)] [> $position 0]) { # insert at any point after 0
+            set $ret (string [string-range $string 0 (- $position 1)] $instring [string-range $string $position (- [sizeof $string] 1)])
+        }
+        else { # insert at 0
+            set $ret (string $instring $string)
+        }
+    }
+    else {
+        stdlib-set-error string "the position must be inside the string bounds"
+    }
+
+    pass $ret
 }
 
 function string-remove string position {
+    local ret $nil
 
+
+    if(&& [>= $position 0] [< $position (sizeof $string)]) {
+        if(== (- [sizeof $string] 1) $position) { # pop off of the end
+            set $ret (string-range $string 0 (- (sizeof $string) 2))
+        }
+        elseif(&& [< $position (sizeof $string)] [> $position 0]) { # remove at any point after 0
+            set $ret [string (string-range $string 0 (- $position 1)) (string-range $string (+ $position 1) (- (sizeof $string) 1))]
+        }
+        else { # remove at 0
+            set $ret (string-range $string 1 (- (sizeof $string) 1))
+        }
+    }
+    else {
+        stdlib-set-error string "the position must be inside the string bounds"
+    }
+
+    pass $ret
 }
 
-function string-replace string replacement {
+function string-replace string replacee replacement {
+    local ret ""
+    local break 0
+    local last 0
+    local replaced 0
+    local at 0
 
+
+    loop(&& [<= (+ $last [sizeof $replacee]) (sizeof $string)] [! $break]) {
+        set $at (string-search $string $replacee $last)
+
+        if(!= $at -1) {
+            ++ $replaced
+
+            if(== $at 0) {
+                set $ret [string $ret $replacement]
+            }
+            else {
+                if(== $last $at) {
+                    set $ret [string $ret $replacement]
+                }
+                else {
+                    set $ret [string $ret (string-range $string $last [- $at 1]) $replacement]
+                }
+            }
+
+            set $last (+ $at [sizeof $replacee])
+        }
+        else {
+            ++ $break
+        }
+    }
+    if(! $replaced) {
+        set $ret (copy $string)
+    }
+    else {
+        if(< $last [sizeof $string]) {
+            set $ret [string $ret (string-range $string $last [- (sizeof $string) 1])]
+        }
+    }
+
+    pass $ret
 }
 
 

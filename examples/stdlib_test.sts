@@ -47,6 +47,8 @@ function test_debug_string {
 function test_string_utils {
     print ============ testing string utils ==============
     local source_str "hello world"
+    local replace_string "[] test0 [][] hello test[] test[]    a"
+    local replace_string1 "[ test0 [[ hello test[ test[[[[[[["
     local test_str $nil
 
     set $test_str (string-range $source_str 1 4)
@@ -56,6 +58,19 @@ function test_string_utils {
     print found in string search at: (string-search $source_str "rld")
 
     print found in reverse string search at: (string-rsearch $source_str "o")
+
+    print inserting into string at position 0: (string-insert $source_str 0 "hello, ")
+    print inserting into string at position 6: (string-insert $source_str 6 "cool ")
+    print inserting into string at end: (string-insert $source_str [sizeof $source_str] "!")
+
+
+    print removing char at position 0: (string-remove $source_str 0)
+    print removing char at position 5: (string-remove $source_str 5)
+    print removing char at end: (string-remove $source_str (- [sizeof $source_str] 1))
+
+
+    print replacing "[]" with !: (string-replace $replace_string "[]" !)
+    print replacing "[" with HELLO: (string-replace $replace_string1 "[" HELLO)
 }
 
 # all tests below =====
