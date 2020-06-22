@@ -17,9 +17,9 @@ loop(< $i 10) {
 ```
 
 ## Usage (when compiling cli.c)
-`./STS` to enter repl. Works like a shell and will fall back on using the native shell if no global or local function is found
+`./sts` to enter repl. Works like a shell and will fall back on using the native shell if no global or local function is found
 
-`./STS file.sts` to eval a script
+`./sts file.sts` to eval a script
 
 ## License
 Unlicense. This project is released into the public domain.

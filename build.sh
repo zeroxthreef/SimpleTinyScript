@@ -1,2 +1,2 @@
 #!/bin/sh
-cc -Wall -g -o STS cli.c -lm
+cc -Wall -g -o sts cli.c -lm
