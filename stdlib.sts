@@ -500,6 +500,32 @@ function string-value-print value {
     pass $ret
 }
 
+function typeof-string value {
+    local ret $nil
+
+
+    if(== (typeof $value) (STS_NIL)) {
+        set $ret (copy "STS_NIL")
+    }
+    elseif(== (typeof $value) (STS_FUNCTION)) {
+        set $ret (copy "STS_FUNCTION")
+    }
+    elseif(== (typeof $value) (STS_EXTERNAL)) {
+        set $ret (copy "STS_EXTERNAL")
+    }
+    elseif(== (typeof $value) (STS_ARRAY)) {
+        set $ret (copy "STS_ARRAY")
+    }
+    elseif(== (typeof $value) (STS_NUMBER)) {
+        set $ret (copy "STS_NUMBER")
+    }
+    elseif(== (typeof $value) (STS_STRING)) {
+        set $ret (copy "STS_STRING")
+    }
+
+    pass $ret
+}
+
 function expr { # turn arguments into an expression and evaluate it
     local $ret 0
 
