@@ -693,6 +693,16 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			}
 			else {STS_ERROR_SIMPLE("copy action requires 1 argument"); return NULL;}
 		}
+		ACTION(else if, "number")
+		{
+			if(args->next)
+			{
+				EVAL_ARG(args->next); if(eval_value->type == STS_STRING){ VALUE_FROM_NUMBER(ret, strtod(eval_value->string, NULL)); }
+				else {STS_ERROR_SIMPLE("number action requires the argument to be a string"); sts_value_reference_decrement(script, eval_value); return NULL;}
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in copy action");
+			}
+			else {STS_ERROR_SIMPLE("number action requires 1 argument string"); return NULL;}
+		}
 		ACTION(else if, "get") /* indexes arrays and gets members for more complex types  */
 		{
 			if(args->next && args->next->next)
