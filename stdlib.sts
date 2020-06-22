@@ -215,11 +215,76 @@ function hashmap-update map {
 
 
 function string-tokenize string token {
+    local ret [array]
+    local break 0
+    local last 0
+    local found 0
+    local at 0
 
+
+    loop(&& [<= (+ $last [sizeof $token]) (sizeof $string)] [! $break]) {
+        set $at (string-search $string $token $last)
+
+        if(!= $at -1) {
+            ++ $found
+
+            if(== $at 0) {
+                insert $ret (sizeof $ret) (copy "")
+            }
+            else {
+                if(== $last $at) {
+                    insert $ret (sizeof $ret) (copy "")
+                }
+                else {
+                    insert $ret (sizeof $ret) (string-range $string $last [- $at 1])
+                }
+            }
+
+            set $last (+ $at [sizeof $token])
+        }
+        else {
+            ++ $break
+        }
+    }
+    if(! $found) {
+        insert $ret (sizeof $ret) (copy $string)
+    }
+    elseif(< $last [sizeof $string]) { # copy the remaining part of the string if there is any
+        insert $ret (sizeof $ret) (string-range $string $last [- (sizeof $string) 1])
+    }
+    else {
+        insert $ret (sizeof $ret) (copy "")
+    }
+
+    pass $ret
 }
 
 function string-combine array between_string {
+    local ret $nil
+    local i 1 # need to start after the first token
 
+
+    if(== (sizeof $array) 1) {
+        set $ret (copy [get $array 0])
+    }
+    elseif(== (sizeof $array) 2) {
+        set $ret (string [get $array 0] $between_string [get $array 1])
+    }
+    else {
+        set $ret (copy [get $array 0])
+
+        #loop(< $i [- (sizeof $array) 1]) {
+        loop(< $i (sizeof $array)) {
+
+            set $ret (string $ret $between_string [get $array $i])
+
+            ++ $i
+        }
+
+        # set $ret (string $ret $between_string ENDING_REPLACE)
+    }
+
+    pass $ret
 }
 
 function string-range string start end {

@@ -71,6 +71,15 @@ function test_string_utils {
 
     print replacing "[]" with !: (string-replace $replace_string "[]" !)
     print replacing "[" with HELLO: (string-replace $replace_string1 "[" HELLO)
+
+    print debug print of string tokenized by "[]": (string-value-print (string-tokenize $replace_string "[]"))
+    print debug print of string tokenized by "[": (string-value-print (string-tokenize $replace_string1 "["))
+
+
+    print recombining a string tokenized by "[]": (string-combine (string-tokenize $replace_string "[]") "[]")
+    print recombining a string tokenized by "[": (string-combine (string-tokenize $replace_string1 "[") "[")
+
+    print recombining a string tokenized by "[": (string-combine (string-tokenize "hello[world" "[") "[")
 }
 
 # all tests below =====
