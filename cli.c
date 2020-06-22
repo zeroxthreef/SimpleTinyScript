@@ -394,6 +394,39 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			}
 			else {STS_ERROR_SIMPLE("file-append action requires at least 2 string arguments"); return NULL;}
 		}
+		ACTION(else if, "getenv") /* gets a string from the system shell environment */
+		{
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+				if(eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "the getenv action requires a string argument for the env variable\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in getenv action");
+					return NULL;
+				}
+
+				if(!(temp_str = getenv(eval_value->string)))
+				{
+					VALUE_INIT(ret, STS_NIL);
+				}
+				else
+				{
+					VALUE_INIT(ret, STS_STRING);
+					if(!(ret->string = strdup(temp_str)))
+					{
+						fprintf(stderr, "couldnt duplicate environment variable value\n");
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in getenv action");
+						return NULL;
+					}
+				}
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in getenv action");
+			}
+			else {STS_ERROR_SIMPLE("getenv action requires a single string path argument"); return NULL;}
+		}
+
+		/* end of sts_string action type */
 	}
 
 	if(!ret)
