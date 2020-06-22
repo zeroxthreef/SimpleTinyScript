@@ -219,6 +219,28 @@ int sts_map_remove(sts_map_row_t **row, void *key, unsigned int key_size);
 			snprintf(&(dest)[before_size], size + 1, conversion, between); if(after_str) memmove(&(dest)[size - after_size], after_str, after_size); (dest)[size] = 0;}	\
 	}while(0)
 
+#define STS_STRING_UNESCAPE_STRING(string) do{ unsigned int i, modified = 0, orig_len = 0;	\
+		for(i = 0; i < strlen((string)); ++i){ orig_len = strlen((string));	\
+			if((string)[i] == '\\'){	\
+				switch((string)[i + 1]){	\
+					case 'a': ++modified; (string)[i] = 0x07; break;	\
+					case 'b': ++modified; (string)[i] = 0x08; break;	\
+					case 'e': ++modified; (string)[i] = 0x1B; break;	\
+					case 'f': ++modified; (string)[i] = 0x0C; break;	\
+					case 'n': ++modified; (string)[i] = 0x0A; break;	\
+					case 'r': ++modified; (string)[i] = 0x0D; break;	\
+					case 't': ++modified; (string)[i] = 0x09; break;	\
+					case 'v': ++modified; (string)[i] = 0x0B; break;	\
+					case '\\': ++modified; (string)[i] = 0x5C; break;	\
+					case '\'': ++modified; (string)[i] = 0x27; break;	\
+					case '\"': ++modified; (string)[i] = 0x22; break;	\
+					case '\?': ++modified; (string)[i] = 0x3F; break;	\
+				}	\
+				if(modified){ memmove(&(string)[i + 1], &(string)[i + 2], strlen(&(string)[i + 2])); (string)[orig_len - 1] = 0x0;}	\
+			} modified = 0;	\
+		}	\
+	}while(0)
+
 /* definitions */
 
 sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_text, char *script_name, unsigned int *offset, unsigned int *line)
@@ -281,7 +303,7 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 				if(!STS_CREATE_VALUE(value)) PARSER_ERROR("could not create value"); /* create new string value, duplicate the string from the script, and add it to the expression */
 				if(!(value->string = STS_STRNDUP(&script_text[start], *offset - start))) PARSER_ERROR("could not duplicate string for value");
 				/* printf("adding string literal '%s'\n", value->string); */
-				value->type = STS_STRING; value->references = 1;
+				value->type = STS_STRING; value->references = 1; STS_STRING_UNESCAPE_STRING(value->string);
 				PARSER_ADD_EXPRESSION(expression_node, expression_progress, value, *line);
 			break;
 			case '(': case '{': case '[':
@@ -699,7 +721,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			{
 				EVAL_ARG(args->next); if(eval_value->type == STS_STRING){ VALUE_FROM_NUMBER(ret, strtod(eval_value->string, NULL)); }
 				else {STS_ERROR_SIMPLE("number action requires the argument to be a string"); sts_value_reference_decrement(script, eval_value); return NULL;}
-				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in copy action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in number action");
 			}
 			else {STS_ERROR_SIMPLE("number action requires 1 argument string"); return NULL;}
 		}
