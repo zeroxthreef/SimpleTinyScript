@@ -284,6 +284,10 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 		switch(script_text[*offset])
 		{
 			case '#': while(script_text[(*offset) + 1] && script_text[(*offset) + 1] != '\n')(*offset)++; break;
+			case '\\': /* let expressions continue onto the next line */
+				if(script_text[(*offset) + 1] == '\r' && script_text[(*offset) + 2] == '\n'){ (*offset) += 2; (*line)++;}
+				else if(script_text[(*offset) + 1] == '\n'){ (*offset)++; (*line)++;}
+			break;
 			case '\n': (*line)++;
 			case ';': /* append in progress expression node to container node */
 				/* printf("expression ended\n"); */

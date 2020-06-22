@@ -1,0 +1,15 @@
+print array size: (sizeof [array hello   \
+    world test])
+
+print array size: (sizeof [array hello   \
+world test])
+
+print array size: (sizeof [array hello   \
+    world \
+    \
+    test])
+
+\
+\
+
+print was here
