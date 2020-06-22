@@ -16,6 +16,9 @@ function test_hashmap {
     print empty hashmap: (string-value-print $map_empty)
     print map with keys: (string-value-print $map)
 
+    print map with keys all listed: (string-value-print (hashmap-keys $map))
+    print map with values all listed: (string-value-print (hashmap-values $map))
+
     print getting a value from the hashmap: (hashmap-get $map key1)
     print attempting to get a value from a nonexistant key: (hashmap-get $map notkey)
 

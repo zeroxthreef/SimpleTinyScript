@@ -89,7 +89,7 @@ function hashmap-get map key {
     local break 0
     local i 0
 
-    if(&& [!= $map (STS_ARRAY)] [!= $key (STS_STRING)]) {
+    if(&& [!= (typeof $map) (STS_ARRAY)] [!= (typeof $key) (STS_STRING)]) {
         stdlib-set-error hashmap "the map arg must be an array and the key must be a string"
     }
     else {
@@ -131,7 +131,7 @@ function hashmap-set map key value {
     local break 0
     local i 0
 
-    if(&& [!= $map (STS_ARRAY)] [!= $key (STS_STRING)]) {
+    if(&& [!= (typeof $map) (STS_ARRAY)] [!= (typeof $key) (STS_STRING)]) {
         stdlib-set-error hashmap "the map arg must be an array and the key must be a string"
     }
     else {
@@ -167,7 +167,7 @@ function hashmap-remove map key {
     local break 0
     local i 0
 
-    if(&& [!= $map (STS_ARRAY)] [!= $key (STS_STRING)]) {
+    if(&& [!= (typeof $map) (STS_ARRAY)] [!= (typeof $key) (STS_STRING)]) {
         stdlib-set-error hashmap "the map arg must be an array and the key must be a string"
     }
     else {
@@ -179,6 +179,48 @@ function hashmap-remove map key {
                 set $ret 1
                 ++ $break
             }
+
+            ++ $i
+        }
+    }
+
+    pass $ret
+}
+
+function hashmap-keys map {
+    local ret $nil
+    local i 0
+
+
+    if(!= (typeof $map) (STS_ARRAY)) {
+        stdlib-set-error hashmap "the map arg must be an array"
+    }
+    else {
+        set $ret [array]
+
+        loop(< $i (sizeof $map)) {
+            insert $ret (sizeof $ret) [get [get $map $i] 1]
+
+            ++ $i
+        }
+    }
+
+    pass $ret
+}
+
+function hashmap-values map {
+    local ret $nil
+    local i 0
+
+
+    if(!= (typeof $map) (STS_ARRAY)) {
+        stdlib-set-error hashmap "the map arg must be an array"
+    }
+    else {
+        set $ret [array]
+
+        loop(< $i (sizeof $map)) {
+            insert $ret (sizeof $ret) [get [get $map $i] 2]
 
             ++ $i
         }
