@@ -109,6 +109,9 @@ int repl(sts_script_t *script)
 		printf("%s ", PS1);
 		while(!equal_open_close(current_buffer) || current_buffer[strlen(current_buffer) - 2] == '\\')
 		{
+			if(current_buffer)
+				printf("> ");
+			
 			getline(&temp_buffer, &size, stdin);
 
 			if(!strcmp(temp_buffer, "exit\n")) /* exit isnt a real action but it needs to clean up in a simple way so this works */
