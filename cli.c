@@ -107,7 +107,7 @@ int repl(sts_script_t *script)
 	while(!quit)
 	{
 		printf("%s ", PS1);
-		while(!equal_open_close(current_buffer))
+		while(!equal_open_close(current_buffer) || current_buffer[strlen(current_buffer) - 2] == '\\')
 		{
 			getline(&temp_buffer, &size, stdin);
 
