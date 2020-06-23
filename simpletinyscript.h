@@ -85,7 +85,11 @@ struct sts_value_t
 			void (*refinc)(sts_script_t *script, sts_value_t *value);
 		} external;
 		double number;
-		char *string;
+		struct
+		{
+			char *data;
+			unsigned int length;
+		} string;
 		struct
 		{
 			unsigned int length, allocated;
@@ -144,6 +148,9 @@ sts_map_row_t *sts_map_add_set(sts_map_row_t **row, void *key, unsigned int key_
 sts_map_row_t *sts_map_get(sts_map_row_t **row, void *key, unsigned int key_size);
 int sts_map_remove(sts_map_row_t **row, void *key, unsigned int key_size);
 
+/* duplicates chunks of memory */
+void *sts_memdup(void *src, unsigned int size);
+
 
 #ifdef STS_IMPLEMENTATION
 #include <stdio.h>
@@ -167,10 +174,6 @@ int sts_map_remove(sts_map_row_t **row, void *key, unsigned int key_size);
 
 #ifndef STS_CALLOC
 	#define STS_CALLOC calloc
-#endif
-
-#ifndef STS_STRNDUP
-	#define STS_STRNDUP strndup
 #endif
 
 #ifndef STS_REALLOC
@@ -224,12 +227,17 @@ int sts_map_remove(sts_map_row_t **row, void *key, unsigned int key_size);
 		STS_FREE(temp);	\
 	}while(current); }while(0)
 
-#define STS_STRING_ASSEMBLE(dest, conversion, between, before_str, after_str) do{ unsigned int size, before_size, after_size;	\
-		before_size = before_str ? strlen(before_str) : 0; after_size = after_str ? strlen(after_str) : 0;	\
-		size = snprintf((dest), 0, conversion, between) + before_size + after_size;	\
-		if(!((dest) = STS_REALLOC((dest), size + 1))) STS_ERROR_SIMPLE("could not resize assembled string");	\
-		else{ if(before_str) memmove((dest), before_str, before_size);	\
-			snprintf(&(dest)[before_size], size + 1, conversion, between); if(after_str) memmove(&(dest)[size - after_size], after_str, after_size); (dest)[size] = 0;}	\
+#define STS_STRING_ASSEMBLE(dest, current_size, middle_str, middle_size, end_str, end_size) do{	\
+		if(!((dest) = STS_REALLOC((dest), (current_size) + (middle_size) + (end_size) + 1))) STS_ERROR_SIMPLE("could not resize assembled string");	\
+		memmove(&(dest)[current_size], (middle_str), (middle_size));	\
+		memmove(&(dest)[current_size + (middle_size)], (end_str), (end_size));	\
+		(dest)[current_size + (middle_size) + (end_size)] = 0x0;	\
+		current_size += (middle_size) + (end_size);	\
+	}while(0)
+
+#define STS_STRING_ASSEMBLE_FMT(dest, current_size, fmt, fmt_arg, end_str, end_size) do{char buf[512];	\
+		snprintf(buf, 512, (fmt), (fmt_arg));	\
+		STS_STRING_ASSEMBLE((dest), (current_size), buf, strlen(buf), (end_str), (end_size));	\
 	}while(0)
 
 #define STS_STRING_UNESCAPE_STRING(string) do{ unsigned int i, modified = 0, orig_len = 0;	\
@@ -248,6 +256,7 @@ int sts_map_remove(sts_map_row_t **row, void *key, unsigned int key_size);
 					case '\'': ++modified; (string)[i] = 0x27; break;	\
 					case '\"': ++modified; (string)[i] = 0x22; break;	\
 					case '\?': ++modified; (string)[i] = 0x3F; break;	\
+					case '0': ++modified; (string)[i] = 0x00; break;/* TODO remove strlen calls here */	\
 				}	\
 				if(modified){ memmove(&(string)[i + 1], &(string)[i + 2], strlen(&(string)[i + 2])); (string)[orig_len - 1] = 0x0;}	\
 			} modified = 0;	\
@@ -318,9 +327,10 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 					(*offset)++;
 				}
 				if(!STS_CREATE_VALUE(value)) PARSER_ERROR("could not create value"); /* create new string value, duplicate the string from the script, and add it to the expression */
-				if(!(value->string = STS_STRNDUP(&script_text[start], *offset - start))) PARSER_ERROR("could not duplicate string for value");
+				if(!(value->string.data = sts_memdup(&script_text[start], *offset - start))) PARSER_ERROR("could not duplicate string for value");
+				value->string.length = *offset - start;
 				/* printf("adding string literal '%s'\n", value->string); */
-				value->type = STS_STRING; value->references = 1; STS_STRING_UNESCAPE_STRING(value->string);
+				value->type = STS_STRING; value->references = 1; STS_STRING_UNESCAPE_STRING(value->string.data);
 				PARSER_ADD_EXPRESSION(expression_node, expression_progress, value, *line);
 			break;
 			case '(': case '{': case '[':
@@ -342,12 +352,13 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 				else
 				{
 					start = *offset; PARSER_SKIP_NOT_WHITESPACE();
-					if(!(value->string = STS_STRNDUP(&script_text[start], *offset + 1 - start))) PARSER_ERROR("could not duplicate string for value");
+					if(!(value->string.data = sts_memdup(&script_text[start], *offset + 1 - start))) PARSER_ERROR("could not duplicate string for value");
+					value->string.length = *offset + 1 - start;
 					/* printf("adding str %s\n", value->string); */
 					value->type = STS_STRING; value->references = 1;
 				}
 				PARSER_ADD_EXPRESSION(expression_node, expression_progress, value, *line);
-				if(value->type == STS_STRING && strlen(value->string) > 1 && value->string[0] == '$' && value->string[1] != '$'){expression_progress->type = STS_NODE_IDENTIFIER; value->references = 1;}
+				if(value->type == STS_STRING && value->string.length > 1 && value->string.data[0] == '$' && value->string.data[1] != '$'){expression_progress->type = STS_NODE_IDENTIFIER; value->references = 1;}
 			break;
 		}
 		if(break_out) break;
@@ -375,11 +386,11 @@ sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_map_row_t **loc
 	switch(ast->type)
 	{
 		case STS_NODE_IDENTIFIER: /* search locals and globals */
-			if(locals && strcmp(ast->value->string + 1, "nil") != 0 && (row = sts_map_get(locals, ast->value->string + 1, strlen(ast->value->string + 1))))
+			if(locals && strcmp(ast->value->string.data + 1, "nil") != 0 && (row = sts_map_get(locals, ast->value->string.data + 1, ast->value->string.length - 1)))
 			{
 				if(row->value){ret = row->value; STS_VALUE_REFINC(script, ret);} else{ STS_ERROR_SIMPLE("could not return row value"); return NULL;}
 			}
-			else if(strcmp(ast->value->string + 1, "nil") != 0 && (row = sts_map_get(&script->globals, ast->value->string + 1, strlen(ast->value->string + 1))))
+			else if(strcmp(ast->value->string.data + 1, "nil") != 0 && (row = sts_map_get(&script->globals, ast->value->string.data + 1, ast->value->string.length - 1)))
 			{
 				if(row->value){ret = row->value; STS_VALUE_REFINC(script, ret);} else{ STS_ERROR_SIMPLE("could not return row value"); return NULL;}
 			}
@@ -432,7 +443,7 @@ int sts_value_reference_decrement(sts_script_t *script, sts_value_t *value)
 				STS_FREE(value->array.data);
 			break;
 			case STS_STRING:
-				STS_FREE(value->string);
+				STS_FREE(value->string.data);
 			break;
 			case STS_EXTERNAL:
 				if(value->external.refdec) value->external.refdec(script, value);
@@ -464,7 +475,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 	#define EVAL_ARG_ALL(argument) do{if(!(eval_value = sts_eval(script, argument, locals, previous, 0))){STS_ERROR_SIMPLE("could not eval argument"); } }while(0)
 	#define VALUE_FROM_NUMBER(value_ptr, set_number) do{if(!(STS_CREATE_VALUE(value_ptr))) STS_ERROR_SIMPLE("could not create value for number"); else{value_ptr->references = 1; value_ptr->type = STS_NUMBER; value_ptr->number = (float)set_number;} }while(0)
 	#define VALUE_INIT(value_ptr, set_type) do{if(!(STS_CREATE_VALUE(value_ptr))) STS_ERROR_SIMPLE("could not create and initialize value"); else{value_ptr->references = 1; value_ptr->type = set_type;} }while(0)
-	#define ACTION(test, str) test(strcmp(str, action->string) == 0)
+	#define ACTION(test, str) test(strcmp(str, action->string.data) == 0)
 	#define ACTION_BEGIN_ARGLOOP while((args = args->next))	\
 		{ if(!(eval_value = sts_eval(script, args, locals, previous, 1))){STS_ERROR_SIMPLE("could not eval argument in loop"); break;}
 	#define ACTION_END_ARGLOOP if(!sts_value_reference_decrement(script, eval_value)){STS_ERROR_SIMPLE("could not decrement references in eval argument"); break;} }
@@ -477,16 +488,18 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
-					case STS_NUMBER: STS_STRING_ASSEMBLE(temp_str, "%g", eval_value->number, temp_str, " "); break;
-					case STS_NIL: STS_STRING_ASSEMBLE(temp_str, "%s", "nil", temp_str, " "); break;
-					case STS_ARRAY: STS_STRING_ASSEMBLE(temp_str, "[array passed and is %u elements long]", eval_value->array.length, temp_str, " "); break;
-					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, "%s", eval_value->string, temp_str, " "); break;
-					case STS_EXTERNAL: STS_STRING_ASSEMBLE(temp_str, "%p", eval_value->external.data_ptr, temp_str, " "); break;
-					case STS_FUNCTION: STS_STRING_ASSEMBLE(temp_str, "[function passed and it takes %u arguments]", eval_value->function.argument_identifiers->array.length, temp_str, " "); break;
+					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%g", eval_value->number, " ", 1); break;
+					case STS_NIL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", "nil", " ", 1); break;
+					case STS_ARRAY: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[array passed and is %u elements long]", eval_value->array.length,  " ", 1); break;
+					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, temp_uint, eval_value->string.data, eval_value->string.length, " ", 1); break;
+					case STS_EXTERNAL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%p", eval_value->external.data_ptr, " ", 1); break;
+					case STS_FUNCTION: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[function passed and it takes %u arguments]", eval_value->function.argument_identifiers->array.length, " ", 1); break;
 				}
 			ACTION_END_ARGLOOP
-			STS_STRING_ASSEMBLE(temp_str, "%s", "", temp_str, "\n");
-			printf("%s", temp_str); STS_FREE(temp_str);
+			STS_STRING_ASSEMBLE(temp_str, temp_uint, "\n", 1, "", 0);
+			for(i = 0; i < temp_uint; ++i)
+				fputc(temp_str[i], stdout);
+			STS_FREE(temp_str);
 			VALUE_FROM_NUMBER(ret, 1);
 		}
 		ACTION(else if, "pass")
@@ -501,15 +514,15 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
-					case STS_NUMBER: STS_STRING_ASSEMBLE(temp_str, "%g", eval_value->number, temp_str, ""); break;
-					case STS_NIL: STS_STRING_ASSEMBLE(temp_str, "%s", "nil", temp_str, ""); break;
-					case STS_ARRAY: STS_STRING_ASSEMBLE(temp_str, "[array passed and is %d elements long]", eval_value->array.length, temp_str, ""); break;
-					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, "%s", eval_value->string, temp_str, ""); break;
-					case STS_EXTERNAL: STS_STRING_ASSEMBLE(temp_str, "%p", eval_value->external.data_ptr, temp_str, ""); break;
-					case STS_FUNCTION: STS_STRING_ASSEMBLE(temp_str, "[function passed and it takes %u arguments]", eval_value->function.argument_identifiers->array.length, temp_str, ""); break;
+					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%g", eval_value->number, "", 0); break;
+					case STS_NIL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", "nil", "", 0); break;
+					case STS_ARRAY: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[array passed and is %u elements long]", eval_value->array.length,  "", 0); break;
+					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, temp_uint, eval_value->string.data, eval_value->string.length, "", 0); break;
+					case STS_EXTERNAL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%p", eval_value->external.data_ptr, "", 0); break;
+					case STS_FUNCTION: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[function passed and it takes %u arguments]", eval_value->function.argument_identifiers->array.length, "", 0); break;
 				}
 			ACTION_END_ARGLOOP
-			VALUE_INIT(ret, STS_STRING); ret->string = temp_str;
+			VALUE_INIT(ret, STS_STRING); ret->string.data = temp_str; ret->string.length = temp_uint;
 		}
 		ACTION(else if, "global")
 		{
@@ -519,7 +532,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(eval_value->type != STS_STRING){STS_ERROR_SIMPLE("could not lookup global because first argument is not a string"); sts_value_reference_decrement(script, eval_value); return NULL;}
 				temp_value_arg = eval_value; /* temp value becomes the global name */
 
-				if(locals) row = sts_map_get(&script->globals, temp_value_arg->string, strlen(temp_value_arg->string)); /* get the row if it exists */
+				if(locals) row = sts_map_get(&script->globals, temp_value_arg->string.data, temp_value_arg->string.length); /* get the row if it exists */
 
 				if(args->next->next) /* set global */
 				{
@@ -534,7 +547,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 					else
 					{
 						VALUE_INIT(temp_value, eval_value->type); if(sts_value_copy(script, temp_value, eval_value, 0)){ STS_ERROR_SIMPLE("could not set a new value to evaluated argument in global action"); return NULL;}
-						if(!(row = sts_map_add_set(&script->globals, temp_value_arg->string, strlen(temp_value_arg->string), temp_value))){STS_ERROR_SIMPLE("could not add value to global in global action"); return NULL;}
+						if(!(row = sts_map_add_set(&script->globals, temp_value_arg->string.data, temp_value_arg->string.length, temp_value))){STS_ERROR_SIMPLE("could not add value to global in global action"); return NULL;}
 						row->type = STS_ROW_VALUE;
 						ret = temp_value; STS_VALUE_REFINC(script, temp_value);
 					}
@@ -558,7 +571,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(eval_value->type != STS_STRING){STS_ERROR_SIMPLE("could not lookup local because first argument is not a string"); sts_value_reference_decrement(script, eval_value); return NULL;}
 				temp_value_arg = eval_value; /* temp value becomes the local name */
 
-				row = sts_map_get(locals, temp_value_arg->string, strlen(temp_value_arg->string)); /* get the row if it exists */
+				row = sts_map_get(locals, temp_value_arg->string.data, temp_value_arg->string.length); /* get the row if it exists */
 
 				if(args->next->next) /* set local */
 				{
@@ -573,7 +586,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 					else
 					{
 						VALUE_INIT(temp_value, eval_value->type); if(sts_value_copy(script, temp_value, eval_value, 0)){ STS_ERROR_SIMPLE("could not set a new value to evaluated argument in local action"); return NULL;}
-						if(!(row = sts_map_add_set(locals, temp_value_arg->string, strlen(temp_value_arg->string), temp_value))){STS_ERROR_SIMPLE("could not add value to locals in local action"); return NULL;}
+						if(!(row = sts_map_add_set(locals, temp_value_arg->string.data, temp_value_arg->string.length, temp_value))){STS_ERROR_SIMPLE("could not add value to locals in local action"); return NULL;}
 						row->type = STS_ROW_VALUE;
 						ret = temp_value; STS_VALUE_REFINC(script, temp_value);
 					}
@@ -593,7 +606,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		{
 			if(args->next)
 			{
-				EVAL_ARG(args->next); if(eval_value->type == STS_STRING) STS_HASH(temp_uint, eval_value->string, strlen(eval_value->string));
+				EVAL_ARG(args->next); if(eval_value->type == STS_STRING) STS_HASH(temp_uint, eval_value->string.data, eval_value->string.length);
 				VALUE_FROM_NUMBER(ret, (double)temp_uint);
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in typeof action");
 			}
@@ -622,7 +635,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			{
 				EVAL_ARG(args->next); switch(eval_value->type)
 				{
-					case STS_STRING: VALUE_INIT(ret, STS_NUMBER); ret->number = (double)strlen(eval_value->string); break;
+					case STS_STRING: VALUE_INIT(ret, STS_NUMBER); ret->number = (double)eval_value->string.length; break;
 					case STS_ARRAY: VALUE_INIT(ret, STS_NUMBER); ret->number = (double)eval_value->array.length; break;
 					case STS_FUNCTION: VALUE_INIT(ret, STS_NUMBER); ret->number = (double)eval_value->function.argument_identifiers->array.length; break;
 					default: VALUE_INIT(ret, STS_NUMBER); ret->number = 1.0;
@@ -631,10 +644,10 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			}
 			else {STS_ERROR_SIMPLE("sizeof action requires at least 1 argument"); return NULL;}
 		}
-		else if(strcmp("if", action->string) == 0 || strcmp("elseif", action->string) == 0 || strcmp("loop", action->string) == 0)
+		else if(strcmp("if", action->string.data) == 0 || strcmp("elseif", action->string.data) == 0 || strcmp("loop", action->string.data) == 0)
 		{
-			if(strcmp("elseif", action->string) == 0 && (*previous)->type == STS_NUMBER && (*previous)->number) {VALUE_INIT(ret, STS_NUMBER); ret->number = 1.0; return ret;} /* cascade previous value and only run if zero */
-			if(strcmp("loop", action->string) == 0) can_loop = 1;
+			if(strcmp("elseif", action->string.data) == 0 && (*previous)->type == STS_NUMBER && (*previous)->number) {VALUE_INIT(ret, STS_NUMBER); ret->number = 1.0; return ret;} /* cascade previous value and only run if zero */
+			if(strcmp("loop", action->string.data) == 0) can_loop = 1;
 			if(args->next && args->next->next)
 			{
 				do
@@ -686,7 +699,8 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 						if(eval_value->type == STS_STRING) /* only add argument identifier if a string */
 						{
 							VALUE_INIT(temp_value, STS_STRING);
-							temp_value->string = STS_STRNDUP(eval_value->string, strlen(eval_value->string));
+							temp_value->string.data = sts_memdup(eval_value->string.data, eval_value->string.length);
+							temp_value->string.length = eval_value->string.length;
 							STS_ARRAY_APPEND_INSERT(ret->function.argument_identifiers, temp_value, ret->function.argument_identifiers->array.length);
 						}
 						if(!args->next->next) /* the very last argument is the function body. Checked early as to not eval the argument */
@@ -701,8 +715,8 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 
 				if(temp_value_arg->type == STS_STRING) /* only put the function in global var space if a string for function name */
 				{
-					if((row = sts_map_get(locals, temp_value_arg->string, strlen(temp_value_arg->string)))) if(!sts_value_reference_decrement(script, row->value)) STS_ERROR_SIMPLE("could not decrement references for old function value");
-					sts_map_add_set(locals, temp_value_arg->string, strlen(temp_value_arg->string), ret);
+					if((row = sts_map_get(locals, temp_value_arg->string.data, temp_value_arg->string.length))) if(!sts_value_reference_decrement(script, row->value)) STS_ERROR_SIMPLE("could not decrement references for old function value");
+					sts_map_add_set(locals, temp_value_arg->string.data, temp_value_arg->string.length, ret);
 					STS_VALUE_REFINC(script, ret);
 				}
 
@@ -724,7 +738,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		{
 			if(args->next)
 			{
-				EVAL_ARG(args->next); if(eval_value->type == STS_STRING){ VALUE_FROM_NUMBER(ret, strtod(eval_value->string, NULL)); }
+				EVAL_ARG(args->next); if(eval_value->type == STS_STRING){ VALUE_FROM_NUMBER(ret, strtod(eval_value->string.data, NULL)); }
 				else {STS_ERROR_SIMPLE("number action requires the argument to be a string"); sts_value_reference_decrement(script, eval_value); return NULL;}
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in number action");
 			}
@@ -746,10 +760,10 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 						else {STS_ERROR_SIMPLE("get action cannot index array without a number value and the number must be within the array bounds"); return NULL;}
 					break;
 					case STS_STRING:
-						if(eval_value->type == STS_NUMBER && (eval_value->number < strlen(temp_value_arg->string) && eval_value->number >= 0))
+						if(eval_value->type == STS_NUMBER && (eval_value->number < temp_value_arg->string.length && eval_value->number >= 0))
 						{
 							VALUE_INIT(ret, STS_STRING);
-							ret->string = STS_STRNDUP(&(temp_value_arg->string[(unsigned int)eval_value->number]), 1);
+							ret->string.data = sts_memdup(&(temp_value_arg->string.data[(unsigned int)eval_value->number]), 1); ret->string.length = 1;
 						}
 						else {STS_ERROR_SIMPLE("get action cannot index string without a number value and the number must be within the string bounds"); return NULL;}
 					break;
@@ -823,13 +837,13 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(eval_value->type != STS_STRING) STS_ERROR_SIMPLE("import requires the import file argument to be a string");
 				else if(script->read_file)
 				{
-					if((temp_str = script->read_file(script, eval_value->string, &temp_uint)));
-					else if(!script->import_file || !(temp_str = script->import_file(script, eval_value->string)))
+					if((temp_str = script->read_file(script, eval_value->string.data, &temp_uint)));
+					else if(!script->import_file || !(temp_str = script->import_file(script, eval_value->string.data)))
 						STS_ERROR_SIMPLE("could not find file requested in import action");
 					if(temp_str)
 					{
 						temp_uint = temp0_uint = 0;
-						if(!(temp_node = sts_parse(script, NULL, temp_str, eval_value->string, &temp_uint, &temp0_uint)))
+						if(!(temp_node = sts_parse(script, NULL, temp_str, eval_value->string.data, &temp_uint, &temp0_uint)))
 							STS_ERROR_SIMPLE("could not parse imported file");
 						else if(!(temp_value = sts_eval(script, temp_node, NULL, NULL, 0)))
 							STS_ERROR_SIMPLE("could not evaluate the imported file");
@@ -863,7 +877,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 					STS_VALUE_REFINC(script, eval_value);
 					if(i < temp_value_arg->function.argument_identifiers->array.length) /* create identifiers for each argument */
 					{
-						if(!sts_map_add_set(&new_locals, temp_value_arg->function.argument_identifiers->array.data[i]->string, strlen(temp_value_arg->function.argument_identifiers->array.data[i]->string), eval_value))
+						if(!sts_map_add_set(&new_locals, temp_value_arg->function.argument_identifiers->array.data[i]->string.data, temp_value_arg->function.argument_identifiers->array.data[i]->string.length, eval_value))
 						{
 							STS_ERROR_SIMPLE("could not create local scope in call action"); return NULL;
 						}
@@ -933,7 +947,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 						else {VALUE_INIT(ret, STS_NUMBER); ret->number = 0.0;}	\
 					break;	\
 					case STS_STRING:	\
-						if(strcmp(temp_value_arg->string, eval_value->string) operator 0) {VALUE_INIT(ret, STS_NUMBER); ret->number = 1.0;}	\
+						if(strcmp(temp_value_arg->string.data, eval_value->string.data) operator 0) {VALUE_INIT(ret, STS_NUMBER); ret->number = 1.0;}	\
 						else {VALUE_INIT(ret, STS_NUMBER); ret->number = 0.0;}	\
 					break;	\
 					case STS_ARRAY:	\
@@ -1022,7 +1036,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		ACTION_SINGLE_NUMERIC(script, floor)
 		ACTION_SINGLE_NUMERIC(script, ceil)
 	} /* end of string comparison for action. Up next is global (local really) function search */
-	if(!ret && action->type == STS_STRING && ( (row = sts_map_get(locals, action->string, strlen(action->string))) || (row = sts_map_get(&script->globals, action->string, strlen(action->string))) ) && ((sts_value_t *)row->value)->type == STS_FUNCTION) /* look for functions to call */
+	if(!ret && action->type == STS_STRING && ( (row = sts_map_get(locals, action->string.data, action->string.length)) || (row = sts_map_get(&script->globals, action->string.data, action->string.length)) ) && ((sts_value_t *)row->value)->type == STS_FUNCTION) /* look for functions to call */
 	{
 		VALUE_INIT(temp_value, STS_ARRAY); if(!temp_value){STS_ERROR_SIMPLE("could not create elipses value"); return NULL;}
 		if(!sts_map_add_set(&new_locals, "...", strlen("..."), temp_value))
@@ -1033,7 +1047,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			STS_VALUE_REFINC(script, eval_value);
 			if(i < ((sts_value_t *)row->value)->function.argument_identifiers->array.length) /* create identifiers for each argument */
 			{
-				if(!sts_map_add_set(&new_locals, ((sts_value_t *)row->value)->function.argument_identifiers->array.data[i]->string, strlen(((sts_value_t *)row->value)->function.argument_identifiers->array.data[i]->string), eval_value))
+				if(!sts_map_add_set(&new_locals, ((sts_value_t *)row->value)->function.argument_identifiers->array.data[i]->string.data, ((sts_value_t *)row->value)->function.argument_identifiers->array.data[i]->string.length, eval_value))
 				{
 					STS_ERROR_SIMPLE("could not create local scope"); return NULL;
 				}
@@ -1132,7 +1146,7 @@ int sts_value_copy(sts_script_t *script, sts_value_t *dest, sts_value_t *source,
 			}
 			if(dest->array.data) STS_FREE(dest->array.data); dest->array.data = NULL; dest->array.length = dest->array.allocated = 0;
 		break;
-		case STS_STRING: if(dest->string) STS_FREE(dest->string); break;
+		case STS_STRING: if(dest->string.data) STS_FREE(dest->string.data); break;
 		case STS_EXTERNAL: if(dest->external.refdec) if(dest->external.refdec((script), dest)) STS_ERROR_SIMPLE("could not decrement external data"); break;
 		case STS_FUNCTION:
 			if(dest->function.argument_identifiers) if(!sts_value_reference_decrement(script, dest->function.argument_identifiers)) STS_ERROR_SIMPLE("could not decrement references for argument identifiers in the destination value");
@@ -1168,7 +1182,7 @@ int sts_value_copy(sts_script_t *script, sts_value_t *dest, sts_value_t *source,
 				}
 			}
 		break;
-		case STS_STRING: if(source->string) dest->string = STS_STRNDUP(source->string, strlen(source->string)); break;
+		case STS_STRING: if(source->string.data) dest->string.data = sts_memdup(source->string.data, source->string.length); dest->string.length = source->string.length; break;
 		case STS_EXTERNAL: memmove(&dest->external, &source->external, sizeof(source->external)); if(source->external.refinc) source->external.refinc((script), source); break;
 		case STS_FUNCTION:
 			dest->function.body = source->function.body;
@@ -1203,7 +1217,7 @@ int sts_value_test(sts_value_t *value) /* STS_NIL is always 0 */
 		case STS_EXTERNAL: if(!value->external.data_ptr) return 0; break;
 		case STS_NIL: return 0; break;
 		case STS_NUMBER: if(!value->number) return 0; break;
-		case STS_STRING: if(!strlen(value->string)) return 0; break;
+		case STS_STRING: if(!value->string.length) return 0; break;
 		case STS_ARRAY: if(!value->array.length) return 0; break;
 		/* case STS_FUNCTION: do nothing. Its just always valid */
 	}
@@ -1264,6 +1278,13 @@ int sts_map_remove(sts_map_row_t **row, void *key, unsigned int key_size)
 		previous = current;
 	} while((current = current->next));
 	return 0;
+}
+
+void *sts_memdup(void *src, unsigned int size)
+{
+	void *ret = NULL;
+	if((ret = malloc(size + 1))) memcpy(ret, src, size), ((char *)ret)[size] = 0x0; /* allocate just one more. Mostly used for strings and it isnt that big of a deal */
+	return ret;
 }
 
 

@@ -31,7 +31,7 @@ void debug_ast(sts_node_t *node, int level)
 					debug_ast(node->child, level + 1);
 			break;
 			case STS_NODE_IDENTIFIER:
-				printf("ident: '%s'\n", node->value->string);
+				printf("ident: '%s'\n", node->value->string.data);
 			break;
 			case STS_NODE_VALUE:
 				if(node->value)
@@ -48,7 +48,7 @@ void debug_ast(sts_node_t *node, int level)
 							printf("number(%u): %f\n", node->value->references, node->value->number);
 						break;
 						case STS_STRING:
-							printf("string(%u): '%s'\n", node->value->references, node->value->string);
+							printf("string(%u): '%s'\n", node->value->references, node->value->string.data);
 						break;
 					}
 				}
@@ -205,7 +205,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 	sts_value_t *ret = NULL, *eval_value = NULL, *temp_value = NULL, *first_arg_value = NULL, *second_arg_value = NULL;
 	FILE *proc_pipe = NULL, *file = NULL;
 	char *temp_str = NULL, *popen_buf = NULL, buf[1024];
-	unsigned int size = 0, total = 0, popen_buf_init = 0, temp_uint;
+	unsigned int size = 0, total = 0, temp_uint = 0;
 
 
 	if(action->type == STS_STRING)
@@ -223,14 +223,14 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
-					case STS_NUMBER: STS_STRING_ASSEMBLE(temp_str, "%g", eval_value->number, temp_str, " "); break;
-					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, "%s", eval_value->string, temp_str, " "); break;
+					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, size, "%g", eval_value->number, " ", 1); break;
+					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, size, eval_value->string.data, eval_value->string.length, " ", 1); break;
 				}
 			ACTION_END_ARGLOOP
 
 			if((proc_pipe = popen(temp_str, "r")))
 			{
-				while((size = fread(buf, 1, 1024, proc_pipe)) >= 1024 || !total)
+				while((size = fread(buf, 1, 1024, proc_pipe)) > 0)
 				{
 					if(!(popen_buf = realloc(popen_buf, total + size + 1)))
 					{
@@ -238,16 +238,9 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 						break;
 					}
 
-					buf[size] = 0x0;
-
-					if(!popen_buf_init)
-					{
-						popen_buf[0] = 0x0;
-						popen_buf_init = 1;
-					}
-
-					strcat(popen_buf, buf);
+					memmove(&popen_buf[total], buf, size);
 					total += size;
+					popen_buf[total] = 0x0;
 				}
 
 				/* make string into sts value */
@@ -259,7 +252,8 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					fprintf(stderr, "could not set value to string type\n");
 				}
 
-				first_arg_value->string = popen_buf;
+				first_arg_value->string.data = popen_buf;
+				first_arg_value->string.length = total;
 
 				/* cleanup temporary value */
 
@@ -290,7 +284,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					return NULL;
 				}
 
-				if(!(file = fopen(eval_value->string, "r")))
+				if(!(file = fopen(eval_value->string.data, "rb")))
 				{
 					VALUE_INIT(ret, STS_NIL);
 				}
@@ -314,7 +308,8 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					}
 
 					VALUE_INIT(ret, STS_STRING);
-					ret->string = temp_str;
+					ret->string.data = temp_str;
+					ret->string.length = temp_uint;
 
 					fclose(file);
 				}
@@ -338,13 +333,13 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					return NULL;
 				}
 
-				if(!(file = fopen(first_arg_value->string, "w")))
+				if(!(file = fopen(first_arg_value->string.data, "wb")))
 				{
 					VALUE_INIT(ret, STS_NIL);
 				}
 				else
 				{
-					VALUE_FROM_NUMBER(ret, fwrite(eval_value->string, sizeof(char), strlen(eval_value->string), file));
+					VALUE_FROM_NUMBER(ret, fwrite(eval_value->string.data, sizeof(char), eval_value->string.length, file));
 					fclose(file);
 				}
 				
@@ -368,13 +363,13 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					return NULL;
 				}
 
-				if(!(file = fopen(first_arg_value->string, "a")))
+				if(!(file = fopen(first_arg_value->string.data, "ab")))
 				{
 					VALUE_INIT(ret, STS_NIL);
 				}
 				else
 				{
-					VALUE_FROM_NUMBER(ret, fwrite(eval_value->string, sizeof(char), strlen(eval_value->string), file));
+					VALUE_FROM_NUMBER(ret, fwrite(eval_value->string.data, sizeof(char), eval_value->string.length, file));
 					fclose(file);
 				}
 				
@@ -395,14 +390,14 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					return NULL;
 				}
 
-				if(!(temp_str = getenv(eval_value->string)))
+				if(!(temp_str = getenv(eval_value->string.data)))
 				{
 					VALUE_INIT(ret, STS_NIL);
 				}
 				else
 				{
 					VALUE_INIT(ret, STS_STRING);
-					if(!(ret->string = strdup(temp_str)))
+					if(!(ret->string.data = strdup(temp_str)))
 					{
 						fprintf(stderr, "couldnt duplicate environment variable value\n");
 						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in getenv action");
@@ -423,12 +418,12 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 	#if CLI_ALLOW_SYSTEM
 	if(!ret && action->type == STS_STRING) /* execute a shell command instead */
 	{
-		STS_STRING_ASSEMBLE(temp_str, "%s", action->string, temp_str, " ");
+		STS_STRING_ASSEMBLE(temp_str, size, action->string.data, action->string.length, " ", 1);
 		ACTION_BEGIN_ARGLOOP
 			switch(eval_value->type)
 			{
-				case STS_NUMBER: STS_STRING_ASSEMBLE(temp_str, "%g", eval_value->number, temp_str, " "); break;
-				case STS_STRING: STS_STRING_ASSEMBLE(temp_str, "%s", eval_value->string, temp_str, " "); break;
+				case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, size, "%g", eval_value->number, " ", 1); break;
+				case STS_STRING: STS_STRING_ASSEMBLE(temp_str, size, eval_value->string.data, eval_value->string.length, " ", 1); break;
 			}
 		ACTION_END_ARGLOOP
 
