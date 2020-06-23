@@ -45,6 +45,7 @@ enum sts_row_types
 typedef struct sts_script_t sts_script_t;
 typedef struct sts_value_t sts_value_t;
 typedef struct sts_node_t sts_node_t;
+typedef struct sts_ast_container_t sts_ast_container_t;
 typedef struct sts_map_row_t sts_map_row_t;
 
 /* structures */
@@ -63,6 +64,12 @@ struct sts_node_t
 	char type;
 	sts_value_t *value;
 	unsigned int line;
+};
+
+struct sts_ast_container_t
+{
+	sts_node_t *node;
+	unsigned int references;
 };
 
 struct sts_value_t
@@ -87,7 +94,7 @@ struct sts_value_t
 		struct
 		{
 			sts_value_t *argument_identifiers; /* this is an array. Not a double ptr array for a reason */
-			sts_node_t *body;
+			sts_ast_container_t *body;
 		} function;
 	};
 };
@@ -97,7 +104,7 @@ struct sts_script_t
 	char *name;
 	void *userdata;
 	sts_node_t *script;
-	sts_map_row_t *globals, *functions;
+	sts_map_row_t *globals;
 	char *(*read_file)(sts_script_t *script, char *file, unsigned int *size);
 	char *(*import_file)(sts_script_t *script, char *file);
 	sts_value_t *(*router)(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_map_row_t **locals, sts_value_t **previous);
@@ -112,10 +119,16 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_map_row_t **locals, sts_value_t **previous, int single);
 
 /* cleanup */
-int sts_destroy(sts_script_t *script, sts_node_t *node);
+int sts_destroy(sts_script_t *script);
 
 /* the default functions and behavior */
 sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_map_row_t **locals, sts_value_t **previous);
+
+/* copy an ast from the provided node */
+sts_node_t *sts_ast_copy(sts_script_t *script, sts_node_t *node);
+
+/* delete an ast */
+void sts_ast_delete(sts_script_t *script, sts_node_t *node);
 
 /* decrement references recursively */
 int sts_value_reference_decrement(sts_script_t *script, sts_value_t *value);
@@ -397,33 +410,11 @@ sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_map_row_t **loc
 	return ret;
 }
 
-int sts_destroy(sts_script_t *script, sts_node_t *node)
+int sts_destroy(sts_script_t *script)
 {
-	sts_node_t *current_node = script->script, *temp = NULL;
-	if(!node) /* clean up functions and globals */
-	{
-		if(script->functions) STS_DESTROY_MAP(script->functions, 0);
-		if(script->globals) STS_DESTROY_MAP(script->globals, 0);
-	}
-	else current_node = node;
-		if(current_node)
-			do
-			{
-				switch(current_node->type)
-				{
-					case STS_NODE_EXPRESSION:
-						if(current_node->child)
-							if(!sts_destroy(script, current_node->child)) return 0;
-					break;
-					case STS_NODE_IDENTIFIER:
-					case STS_NODE_VALUE:
-						sts_value_reference_decrement(script, current_node->value);
-					break;
-				}
-				temp = current_node;
-				current_node = current_node->next;
-				STS_FREE(temp);
-			} while(current_node);
+	if(script->globals) STS_DESTROY_MAP(script->globals, 0);
+	sts_ast_delete(script, script->script);
+
 	return 1;
 }
 
@@ -449,6 +440,11 @@ int sts_value_reference_decrement(sts_script_t *script, sts_value_t *value)
 			case STS_FUNCTION:
 				if(value->function.argument_identifiers)
 					if(!sts_value_reference_decrement(script, value->function.argument_identifiers)) STS_ERROR_SIMPLE("could not decrement references in function arguments array");
+				if(value->function.body && ((--value->function.body->references) <= 0))
+				{
+					sts_ast_delete(script, value->function.body->node);
+					STS_FREE(value->function.body);
+				}
 			break;
 		}
 		STS_FREE(value);
@@ -462,6 +458,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 	char *temp_str = NULL;
 	sts_node_t *temp_node = NULL;
 	sts_map_row_t *row = NULL, *new_locals = NULL;
+	sts_ast_container_t *temp_container = NULL;
 	sts_value_t *ret = NULL, *eval_value = NULL, *temp_value_arg = NULL, *temp_value = NULL;
 	#define EVAL_ARG(argument) do{if(!(eval_value = sts_eval(script, argument, locals, previous, 1))){STS_ERROR_SIMPLE("could not eval argument"); } }while(0)
 	#define EVAL_ARG_ALL(argument) do{if(!(eval_value = sts_eval(script, argument, locals, previous, 0))){STS_ERROR_SIMPLE("could not eval argument"); } }while(0)
@@ -676,10 +673,12 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 
 				args = args->next; /* fast forward to next value */
 
-				VALUE_INIT(ret, STS_FUNCTION); VALUE_INIT(ret->function.argument_identifiers, STS_ARRAY);
+				if(!(temp_container = STS_CALLOC(1, sizeof(sts_ast_container_t)))){ STS_ERROR_SIMPLE("could not allocate an ast container"); sts_value_reference_decrement(script, eval_value); return NULL;}
+				VALUE_INIT(ret, STS_FUNCTION);VALUE_INIT(ret->function.argument_identifiers, STS_ARRAY); temp_container->references = 1;
 				if(!args->next->next) /* if a function with no arguments */
 				{
-					ret->function.body = args->next; /* TODO recursively duplicate ast nodes but refinc the values */
+					if(!(temp_container->node = sts_ast_copy(script, args->next))) {STS_ERROR_SIMPLE("could not copy ast to function body in function action"); return NULL;}
+					ret->function.body = temp_container;
 				}
 				else
 				{
@@ -692,7 +691,8 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 						}
 						if(!args->next->next) /* the very last argument is the function body. Checked early as to not eval the argument */
 						{
-							ret->function.body = args->next; /* TODO recursively duplicate ast nodes but refinc the values */
+							if(!(temp_container->node = sts_ast_copy(script, args->next))) {STS_ERROR_SIMPLE("could not copy ast to function body in function action"); return NULL;}
+							ret->function.body = temp_container;
 							if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for current argument in function action");
 							break;
 						}
@@ -701,6 +701,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 
 				if(temp_value_arg->type == STS_STRING) /* only put the function in global var space if a string for function name */
 				{
+					if((row = sts_map_get(locals, temp_value_arg->string, strlen(temp_value_arg->string)))) if(!sts_value_reference_decrement(script, row->value)) STS_ERROR_SIMPLE("could not decrement references for old function value");
 					sts_map_add_set(locals, temp_value_arg->string, strlen(temp_value_arg->string), ret);
 					STS_VALUE_REFINC(script, ret);
 				}
@@ -836,12 +837,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 						{
 							if(!sts_value_reference_decrement(script, temp_value)) STS_ERROR_SIMPLE("could not refdec returned value after eval in import action");
 							i = 1;
-							if(args->next->next) /* have to place the new ast somewhere so we'll place it here */
-							{
-								temp_node->next = args->next->next;
-								args->next->next = temp_node;
-							}
-							else args->next->next = temp_node;
+							sts_ast_delete(script, temp_node);
 						}
 					}
 					STS_FREE(temp_str);
@@ -877,7 +873,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 					++i;
 				ACTION_END_ARGLOOP
 				if(i < temp_value_arg->function.argument_identifiers->array.length){STS_ERROR_SIMPLE("too few arguments provided to function provided to call action"); return NULL;}
-				ret = sts_eval(script, temp_value_arg->function.body, &new_locals, NULL, 0);
+				ret = sts_eval(script, temp_value_arg->function.body->node, &new_locals, NULL, 0);
 				STS_DESTROY_MAP(new_locals, NULL);
 				if(!sts_value_reference_decrement(script, temp_value_arg)) STS_ERROR_SIMPLE("could not decrement references for first argument in call action");
 			}
@@ -945,7 +941,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 						else {VALUE_INIT(ret, STS_NUMBER); ret->number = 0.0;}	\
 					break;	\
 					case STS_FUNCTION:	\
-						if(temp_value_arg->function.body operator eval_value->function.body) {VALUE_INIT(ret, STS_NUMBER); ret->number = 1.0;}	\
+						if(temp_value_arg->function.argument_identifiers->array.length operator eval_value->function.argument_identifiers->array.length) {VALUE_INIT(ret, STS_NUMBER); ret->number = 1.0;}	\
 						else {VALUE_INIT(ret, STS_NUMBER); ret->number = 0.0;}	\
 					break;	\
 				}	\
@@ -1047,10 +1043,81 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			++i;
 		ACTION_END_ARGLOOP
 		if(i < ((sts_value_t *)row->value)->function.argument_identifiers->array.length){STS_ERROR_SIMPLE("too few arguments provided"); return NULL;}
-		ret = sts_eval(script, ((sts_value_t *)row->value)->function.body, &new_locals, NULL, 0);
+		ret = sts_eval(script, ((sts_value_t *)row->value)->function.body->node, &new_locals, NULL, 0);
 		STS_DESTROY_MAP(new_locals, NULL);
 	}
 	return ret;
+}
+
+sts_node_t *sts_ast_copy(sts_script_t *script, sts_node_t *node)
+{
+	sts_node_t *ret = NULL, *progress_node = NULL;
+	do
+	{
+		if(!ret)
+		{
+			if(!(ret = calloc(1, sizeof(sts_node_t))))
+			{
+				STS_ERROR_SIMPLE("could not copy node");
+				continue;
+			}
+			progress_node = ret;
+		}
+		else
+		{
+			if(!(progress_node->next = calloc(1, sizeof(sts_node_t))))
+			{
+				STS_ERROR_SIMPLE("could not copy node");
+				continue;
+			}
+			progress_node = progress_node->next;
+		}
+		progress_node->line =node->line;
+		progress_node->type = node->type;
+		progress_node->value = node->value;
+		switch(node->type)
+		{
+			case STS_NODE_EXPRESSION:
+				if(node->child)
+				{
+					if(!(progress_node->child = sts_ast_copy(script, node->child)))
+					{
+						STS_ERROR_SIMPLE("could not copy child node");
+						continue;
+					}
+				}
+			break;
+			case STS_NODE_IDENTIFIER:
+			case STS_NODE_VALUE:
+				STS_VALUE_REFINC(script, node->value);
+			break;
+		}
+	} while((node = node->next));
+	return ret;
+}
+
+void sts_ast_delete(sts_script_t *script, sts_node_t *node)
+{
+	sts_node_t *temp = NULL;
+	if(!node)
+		return;
+	do
+	{
+		switch(node->type)
+		{
+			case STS_NODE_EXPRESSION:
+				if(node->child) sts_ast_delete(script, node->child);
+			break;
+			case STS_NODE_IDENTIFIER:
+			case STS_NODE_VALUE:
+				if(!sts_value_reference_decrement(script, node->value))
+					STS_ERROR_SIMPLE("could not decrement references in ast");
+			break;
+		}
+		temp = node;
+		node = node->next;
+		STS_FREE(temp);
+	} while(node);
 }
 
 int sts_value_copy(sts_script_t *script, sts_value_t *dest, sts_value_t *source, int recursive)
@@ -1069,6 +1136,11 @@ int sts_value_copy(sts_script_t *script, sts_value_t *dest, sts_value_t *source,
 		case STS_EXTERNAL: if(dest->external.refdec) if(dest->external.refdec((script), dest)) STS_ERROR_SIMPLE("could not decrement external data"); break;
 		case STS_FUNCTION:
 			if(dest->function.argument_identifiers) if(!sts_value_reference_decrement(script, dest->function.argument_identifiers)) STS_ERROR_SIMPLE("could not decrement references for argument identifiers in the destination value");
+			if(dest->function.body && ((--dest->function.body->references) <= 0))
+			{
+				sts_ast_delete(script, dest->function.body->node);
+				STS_FREE(dest->function.body);
+			}
 		break;
 	}
 	dest->type = source->type;
@@ -1100,6 +1172,7 @@ int sts_value_copy(sts_script_t *script, sts_value_t *dest, sts_value_t *source,
 		case STS_EXTERNAL: memmove(&dest->external, &source->external, sizeof(source->external)); if(source->external.refinc) source->external.refinc((script), source); break;
 		case STS_FUNCTION:
 			dest->function.body = source->function.body;
+			dest->function.body->references++;
 			if(recursive)
 			{
 				if(!STS_CREATE_VALUE(temp))

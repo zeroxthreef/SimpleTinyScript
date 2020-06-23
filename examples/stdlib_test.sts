@@ -1,4 +1,9 @@
 import stdlib.sts
+import stdlib.sts
+import stdlib.sts
+import stdlib.sts
+import stdlib.sts
+import stdlib.sts
 
 function test_errors {
     print ============ testing the error system ==============

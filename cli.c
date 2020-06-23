@@ -118,7 +118,7 @@ int repl(sts_script_t *script)
 			{
 				free(temp_buffer);
 				free(current_buffer);
-				if(!sts_destroy(script, NULL))
+				if(!sts_destroy(script))
 					fprintf(stderr, "problem cleaning up script");
 				return 0;
 			}
@@ -137,32 +137,18 @@ int repl(sts_script_t *script)
 		
 		/* parse and eval */
 
-		if(script->script)
-		{
-			temp_node = script->script;
-
-			while(temp_node->next && (temp_node = temp_node->next));
-		}
-
 		if(!(current_node = sts_parse(script, NULL, current_buffer, "repl.sts", &offset, &line)))
 		{
 			fprintf(stderr, "parser error\n");
 		}
 
-		if(!script->script)
-		{
-			script->script = current_node;
-		}
-		else
-		{
-			temp_node->next = current_node;
-		}
 
 		/* eval */
 		ret = sts_eval(script, current_node, NULL, NULL, 0);
 		if(ret && !sts_value_reference_decrement(script, ret)) fprintf(stderr, "could not clean up returned value\n");
 		else if(!ret) fprintf(stderr, "command error\n");
 
+		sts_ast_delete(script, current_node);
 		free(current_buffer);
 		current_buffer = NULL;
 		blank = 1;
@@ -171,7 +157,7 @@ int repl(sts_script_t *script)
 
 	/* cleanup */
 
-	if(!sts_destroy(script, NULL))
+	if(!sts_destroy(script))
 		fprintf(stderr, "problem cleaning up script");
 	
 	return 0;
@@ -457,6 +443,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 
 int main(int argc, char **argv)
 {
+	int retval = 1;
 	sts_script_t script;
 	char *script_text = NULL;
 	unsigned int offset = 0, line = 0, length = 0;
@@ -496,13 +483,15 @@ int main(int argc, char **argv)
 	
 	/* eval */
 	ret = sts_eval(&script, script.script, NULL, NULL, 0);
+	if(ret && ret->type == STS_NUMBER)
+		retval = (int)ret->number;
 	if(ret && !sts_value_reference_decrement(&script, ret)) fprintf(stderr, "could not clean up returned value\n");
 	else if(!ret) fprintf(stderr, "script error\n");
 
 	/* cleanup */
-	if(!sts_destroy(&script, NULL))
+	if(!sts_destroy(&script))
 		fprintf(stderr, "problem cleaning up script");
 	free(script_text);
 	
-	return ret ? 0 : 1;
+	return retval;
 }
