@@ -500,11 +500,34 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in getenv action");
 						return NULL;
 					}
+					ret->string.length = strlen(temp_str);
 				}
 
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in getenv action");
 			}
 			else {STS_ERROR_SIMPLE("getenv action requires a single string path argument"); return NULL;}
+		}
+		ACTION(else if, "setenv") /* write a new or overwrite old env variable */
+		{
+			if(args->next && args->next->next)
+			{
+				EVAL_ARG(args->next); first_arg_value = eval_value;
+				EVAL_ARG(args->next->next);
+
+				if(first_arg_value->type != STS_STRING && eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "setenv requires 2 string arguments only\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in setenv action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in setenv action");
+					return NULL;
+				}
+
+				VALUE_FROM_NUMBER(ret, (double)setenv(first_arg_value->string.data, eval_value->string.data, 1));
+				
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in setenv action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in setenv action");
+			}
+			else {STS_ERROR_SIMPLE("setenv action requires at least 2 string arguments"); return NULL;}
 		}
 
 		/* end of sts_string action type */
