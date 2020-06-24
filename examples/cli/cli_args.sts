@@ -1,0 +1,2 @@
+import stdlib.sts
+print arguments passed: (string-value-print $args)

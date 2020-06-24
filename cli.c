@@ -539,8 +539,8 @@ int main(int argc, char **argv)
 	int retval = 1;
 	sts_script_t script;
 	char *script_text = NULL;
-	unsigned int offset = 0, line = 0, length = 0;
-	sts_value_t *ret = NULL;
+	unsigned int i, offset = 0, line = 0, length = 0;
+	sts_value_t *ret = NULL, *temp_val = NULL, *args = NULL;
 	
 	
 	memset(&script, 0, sizeof(sts_script_t));
@@ -554,6 +554,39 @@ int main(int argc, char **argv)
 	/* if no arguments, send execution to repl */
 	if(argc == 1)
 		return repl(&script);
+	else /* parse the arguments */
+	{
+		if(!(args = calloc(1, sizeof(sts_value_t))))
+		{
+			fprintf(stderr, "could not allocate args array\n");
+			return 1;
+		}
+
+		args->references++;
+		args->type = STS_ARRAY;
+
+		for(i = 2; i < argc; ++i)
+		{
+			if(!(temp_val = calloc(1, sizeof(sts_value_t))))
+			{
+				fprintf(stderr, "could not allocate argument string\n");
+				return 1;
+			}
+
+			temp_val->references++;
+			temp_val->type = STS_STRING;
+			temp_val->string.data = sts_memdup(argv[i], strlen(argv[i]));
+			temp_val->string.length = strlen(argv[i]);
+
+			STS_ARRAY_APPEND_INSERT(args, temp_val, args->array.length);
+		}
+
+		if(!sts_map_add_set(&script.globals, "args", strlen("args"), args))
+		{
+			fprintf(stderr, "could not add args to globals\n");
+				return 1;
+		}
+	}
 	
 	/* open and read script text */
 	
