@@ -10,6 +10,10 @@
 #define CLI_ALLOW_SYSTEM 1
 #define PS1 "#"
 
+#ifndef INSTALL_DIR
+	#define INSTALL_DIR "/usr/local/bin/"
+#endif
+
 void debug_ast(sts_node_t *node, int level)
 {
 	int i;
@@ -171,7 +175,6 @@ char *read_file(sts_script_t *script, char *file, unsigned int *size)
 
 	if(!(script_file = fopen(file, "r")))
 	{
-		fprintf(stderr, "could not open file '%s'\n", file);
 		return NULL;
 	}
 	
@@ -196,6 +199,21 @@ char *read_file(sts_script_t *script, char *file, unsigned int *size)
 	
 	fclose(script_file);
 
+
+	return ret;
+}
+
+char *import(sts_script_t *script, char *file)
+{
+	unsigned int size = 0;
+	char *ret = NULL, *assemble_string = NULL;
+
+
+	STS_STRING_ASSEMBLE(assemble_string, size, INSTALL_DIR, strlen(INSTALL_DIR), file, strlen(file));
+
+	ret = read_file(script, assemble_string, &size);
+
+	STS_FREE(assemble_string);
 
 	return ret;
 }
@@ -573,6 +591,8 @@ int main(int argc, char **argv)
 
 	/* initialize the router */
 	script.router = &cli_actions;
+
+	script.import_file = &import;
 	
 	/* if no arguments, send execution to repl */
 	if(argc == 1)
