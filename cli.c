@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 
 #define CLI_ALLOW_SYSTEM 1
@@ -546,6 +547,25 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in setenv action");
 			}
 			else {STS_ERROR_SIMPLE("setenv action requires at least 2 string arguments"); return NULL;}
+		}
+		ACTION(else if, "sleep") /* sleeps for the number of seconds provided */
+		{
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+				if(eval_value->type != STS_NUMBER )
+				{
+					fprintf(stderr, "the sleep action requires a number argument for the number of seconds to sleep\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the sleep action");
+					return NULL;
+				}
+
+				sleep((unsigned int)eval_value->number);
+				VALUE_FROM_NUMBER(ret, 1.0);
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in sleep action");
+			}
+			else {STS_ERROR_SIMPLE("sleep action requires a single number argument"); return NULL;}
 		}
 
 		/* end of sts_string action type */
