@@ -240,8 +240,8 @@ void *sts_memdup(void *src, unsigned int size);
 		STS_STRING_ASSEMBLE((dest), (current_size), buf, strlen(buf), (end_str), (end_size));	\
 	}while(0)
 
-#define STS_STRING_UNESCAPE_STRING(string) do{ unsigned int i, modified = 0, orig_len = 0;	\
-		for(i = 0; i < strlen((string)); ++i){ orig_len = strlen((string));	\
+#define STS_STRING_UNESCAPE_STRING(string, length) do{ unsigned int i, modified = 0, orig_len = 0;	\
+		for(i = 0; i < (length); ++i){ orig_len = (length);	\
 			if((string)[i] == '\\'){	\
 				switch((string)[i + 1]){	\
 					case 'a': ++modified; (string)[i] = 0x07; break;	\
@@ -256,9 +256,9 @@ void *sts_memdup(void *src, unsigned int size);
 					case '\'': ++modified; (string)[i] = 0x27; break;	\
 					case '\"': ++modified; (string)[i] = 0x22; break;	\
 					case '\?': ++modified; (string)[i] = 0x3F; break;	\
-					case '0': ++modified; (string)[i] = 0x00; break;/* TODO remove strlen calls here */	\
+					case '0': ++modified; (string)[i] = 0x00; break;	\
 				}	\
-				if(modified){ memmove(&(string)[i + 1], &(string)[i + 2], strlen(&(string)[i + 2])); (string)[orig_len - 1] = 0x0;}	\
+				if(modified){ memmove(&(string)[i + 1], &(string)[i + 2], (length) - (i + 2)); (string)[orig_len - 1] = 0x0; (length)--;}	\
 			} modified = 0;	\
 		}	\
 	}while(0)
@@ -330,7 +330,7 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 				if(!(value->string.data = sts_memdup(&script_text[start], *offset - start))) PARSER_ERROR("could not duplicate string for value");
 				value->string.length = *offset - start;
 				/* printf("adding string literal '%s'\n", value->string); */
-				value->type = STS_STRING; value->references = 1; STS_STRING_UNESCAPE_STRING(value->string.data);
+				value->type = STS_STRING; value->references = 1; STS_STRING_UNESCAPE_STRING(value->string.data, value->string.length);
 				PARSER_ADD_EXPRESSION(expression_node, expression_progress, value, *line);
 			break;
 			case '(': case '{': case '[':
