@@ -1,0 +1,2 @@
+stdout-write "what is the message you want repeated: "
+print you said: (stdin-read "\n")

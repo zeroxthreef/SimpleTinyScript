@@ -205,7 +205,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 	sts_value_t *ret = NULL, *eval_value = NULL, *temp_value = NULL, *first_arg_value = NULL, *second_arg_value = NULL;
 	FILE *proc_pipe = NULL, *file = NULL;
 	char *temp_str = NULL, *popen_buf = NULL, buf[1024];
-	unsigned int size = 0, total = 0, temp_uint = 0;
+	unsigned int i = 0, size = 0, total = 0, temp_uint = 0;
 
 
 	if(action->type == STS_STRING)
@@ -378,6 +378,103 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			}
 			else {STS_ERROR_SIMPLE("file-append action requires at least 2 string arguments"); return NULL;}
 		}
+		ACTION(else if, "stdin-read") /* if <=0, it reads until eof. If >0, it will read at least that many characters */
+		{
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+				if(eval_value->type != STS_NUMBER && eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "the stdin-read action requires a number argument for the amount to read or a character (single char long string) for the character to read until\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the stdin-read action");
+					return NULL;
+				}
+
+				if(eval_value->type == STS_NUMBER)
+				{
+					while((size = fread(buf, 1, ((unsigned int)eval_value->number <= 0) ? 1024 : (unsigned int)eval_value->number, stdin)) > 0)
+					{
+						if(!(temp_str = realloc(temp_str, total + size + 1)))
+						{
+							fprintf(stderr, "could not resize stdin buffer\n");
+							break;
+						}
+
+						memmove(&temp_str[total], buf, size);
+						total += size;
+						temp_str[total] = 0x0;
+
+						if(eval_value->number > 0 && total == eval_value->number)
+							break;
+					}
+				}
+				else
+				{
+					while((size = fread(buf, 1, 1, stdin)) > 0)
+					{
+						if(!(temp_str = realloc(temp_str, total + size + 1))) /* not very quick */
+						{
+							fprintf(stderr, "could not resize stdin buffer\n");
+							break;
+						}
+
+						memmove(&temp_str[total], buf, size);
+						total += size;
+						temp_str[total] = 0x0;
+
+						if(*eval_value->string.data == temp_str[total - 1])
+						{
+							temp_str[total - 1] = 0x0;
+							break;
+						}
+					}
+				}
+
+				VALUE_INIT(ret, STS_STRING);
+
+				ret->string.data = temp_str;
+				ret->string.length = total;
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in stdin-read action");
+			}
+			else {STS_ERROR_SIMPLE("stdin-read action requires a single string path argument"); return NULL;}
+		}
+		ACTION(else if, "stdout-write") /* writes raw strings to stdout */
+		{
+			ACTION_BEGIN_ARGLOOP
+				switch(eval_value->type)
+				{
+					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%g", eval_value->number, " ", 0); break;
+					case STS_NIL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", "nil", " ", 0); break;
+					case STS_ARRAY: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[array passed and is %u elements long]", eval_value->array.length,  " ", 0); break;
+					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, temp_uint, eval_value->string.data, eval_value->string.length, " ", 0); break;
+					case STS_EXTERNAL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%p", eval_value->external.data_ptr, " ", 0); break;
+					case STS_FUNCTION: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[function passed and it takes %u arguments]", eval_value->function.argument_identifiers->array.length, " ", 0); break;
+				}
+			ACTION_END_ARGLOOP
+			for(i = 0; i < temp_uint; ++i)
+				fputc(temp_str[i], stdout);
+			STS_FREE(temp_str);
+			VALUE_FROM_NUMBER(ret, 1);
+		}
+		ACTION(else if, "stderr-write") /* writes raw strings to stderr */
+		{
+			ACTION_BEGIN_ARGLOOP
+				switch(eval_value->type)
+				{
+					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%g", eval_value->number, " ", 0); break;
+					case STS_NIL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", "nil", " ", 0); break;
+					case STS_ARRAY: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[array passed and is %u elements long]", eval_value->array.length,  " ", 0); break;
+					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, temp_uint, eval_value->string.data, eval_value->string.length, " ", 0); break;
+					case STS_EXTERNAL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%p", eval_value->external.data_ptr, " ", 0); break;
+					case STS_FUNCTION: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[function passed and it takes %u arguments]", eval_value->function.argument_identifiers->array.length, " ", 0); break;
+				}
+			ACTION_END_ARGLOOP
+			for(i = 0; i < temp_uint; ++i)
+				fputc(temp_str[i], stderr);
+			STS_FREE(temp_str);
+			VALUE_FROM_NUMBER(ret, 1);
+		}
 		ACTION(else if, "getenv") /* gets a string from the system shell environment */
 		{
 			if(args->next)
@@ -436,6 +533,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 	return ret;
 }
 
+#ifndef NO_CLI_MAIN
 int main(int argc, char **argv)
 {
 	int retval = 1;
@@ -490,3 +588,4 @@ int main(int argc, char **argv)
 	
 	return retval;
 }
+#endif
