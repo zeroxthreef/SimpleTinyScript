@@ -581,7 +581,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			switch(eval_value->type)
 			{
 				case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, size, "%g", eval_value->number, " ", 1); break;
-				case STS_STRING: STS_STRING_ASSEMBLE(temp_str, size, eval_value->string.data, eval_value->string.length, " ", 1); break;
+				case STS_STRING: STS_STRING_ASSEMBLE(temp_str, size, "\"", 1, "", 0); STS_STRING_ASSEMBLE(temp_str, size, eval_value->string.data, eval_value->string.length, "\" ", 2); break;
 			}
 		ACTION_END_ARGLOOP
 
