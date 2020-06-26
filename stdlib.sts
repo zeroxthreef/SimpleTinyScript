@@ -262,11 +262,9 @@ function string-tokenize string token {
     local last 0
     local found 0
     local at 0
-    local string_size (sizeof $string)
-    local token_size (sizeof $token)
 
 
-    loop(&& [<= (+ $last $token_size) $string_size] [! $break]) {
+    loop(&& [<= (+ $last [sizeof $token]) (sizeof $string)] [! $break]) {
         set $at (string-search $string $token $last)
 
         if(!= $at -1) {
@@ -284,7 +282,7 @@ function string-tokenize string token {
                 }
             }
 
-            set $last (+ $at $token_size)
+            set $last (+ $at [sizeof $token])
         }
         else {
             ++ $break
@@ -293,8 +291,8 @@ function string-tokenize string token {
     if(! $found) {
         insert $ret (sizeof $ret) (copy $string)
     }
-    elseif(< $last $string_size) { # copy the remaining part of the string if there is any
-        insert $ret (sizeof $ret) (string-range $string $last [- $string_size 1])
+    elseif(< $last [sizeof $string]) { # copy the remaining part of the string if there is any
+        insert $ret (sizeof $ret) (string-range $string $last [- (sizeof $string) 1])
     }
     else {
         insert $ret (sizeof $ret) (copy "")
@@ -334,10 +332,9 @@ function string-combine array between_string {
 function string-range string start end {
     local ret $nil
     local i 0
-    local string_size (sizeof $string)
 
 
-    if(&& [<= $start $end] [< $start $string_size] [< $end $string_size] [<= 0 $start] [<= 0 $end]) {
+    if(&& [<= $start $end] [< $start (sizeof $string)] [< $end (sizeof $string)] [<= 0 $start] [<= 0 $end]) {
         set $i $start
         set $ret ""
         loop(<= $i $end) {
@@ -358,21 +355,19 @@ function string-search string needle {
     local ret -1
     local break 0
     local i 0
-    local string_size (sizeof $string)
-    local needle_size (sizeof $needle)
 
 
-    if(< $string_size $needle_size) {
+    if(< (sizeof $string) (sizeof $needle)) {
         stdlib-set-error string "the needle must be as big or smaller than the source string"
         ++ $break
     }
 
-    if(&& [== (sizeof $...) 1] [== (typeof (get $... 0)) (STS_NUMBER)] [< (get $... 0) $string_size]) {
+    if(&& [== (sizeof $...) 1] [== (typeof (get $... 0)) (STS_NUMBER)] [< (get $... 0) (sizeof $string)]) {
         set $i (get $... 0)
     }
 
-    loop(&& [< $i [- $string_size $needle_size -1]] [! $break]) {
-        if(== (string-range $string $i (+ $i [- $needle_size 1])) $needle) {
+    loop(&& [< $i [- (sizeof $string) (sizeof $needle) -1]] [! $break]) {
+        if(== (string-range $string $i (+ $i [- (sizeof $needle) 1])) $needle) {
             set $ret $i
             ++ $break
         }
@@ -386,18 +381,16 @@ function string-search string needle {
 function string-rsearch string needle {
     local ret -1
     local break 0
-    local string_size (sizeof $string)
-    local needle_size (sizeof $needle)
-    local i [- $string_size $needle_size]
+    local i [- (sizeof $string) (sizeof $needle)]
 
 
-    if(< $string_size $needle_size) {
+    if(< (sizeof $string) (sizeof $needle)) {
         stdlib-set-error string "the needle must be as big or smaller than the source string"
         ++ $break
     }
 
     loop(&& [>= $i 0] [! $break]) {
-        if(== (string-range $string $i (+ $i [- $needle_size 1])) $needle) {
+        if(== (string-range $string $i (+ $i [- (sizeof $needle) 1])) $needle) {
             set $ret $i
             ++ $break
         }
@@ -410,15 +403,14 @@ function string-rsearch string needle {
 
 function string-insert string position instring {
     local ret $nil
-    local string_size (sizeof $string)
 
 
     if(>= $position 0) {
-        if(>= $position $string_size) { # append
+        if(>= $position (sizeof $string)) { # append
             set $ret (string $string $instring)
         }
-        elseif(&& [< $position $string_size] [> $position 0]) { # insert at any point after 0
-            set $ret (string [string-range $string 0 (- $position 1)] $instring [string-range $string $position (- $string_size 1)])
+        elseif(&& [< $position (sizeof $string)] [> $position 0]) { # insert at any point after 0
+            set $ret (string [string-range $string 0 (- $position 1)] $instring [string-range $string $position (- [sizeof $string] 1)])
         }
         else { # insert at 0
             set $ret (string $instring $string)
@@ -433,18 +425,17 @@ function string-insert string position instring {
 
 function string-remove string position {
     local ret $nil
-    local string_size (sizeof $string)
 
 
-    if(&& [>= $position 0] [< $position $string_size]) {
-        if(== (- $string_size 1) $position) { # pop off of the end
-            set $ret (string-range $string 0 (- $string_size 2))
+    if(&& [>= $position 0] [< $position (sizeof $string)]) {
+        if(== (- [sizeof $string] 1) $position) { # pop off of the end
+            set $ret (string-range $string 0 (- (sizeof $string) 2))
         }
-        elseif(&& [< $position $string_size] [> $position 0]) { # remove at any point after 0
-            set $ret [string (string-range $string 0 (- $position 1)) (string-range $string (+ $position 1) (- $string_size 1))]
+        elseif(&& [< $position (sizeof $string)] [> $position 0]) { # remove at any point after 0
+            set $ret [string (string-range $string 0 (- $position 1)) (string-range $string (+ $position 1) (- (sizeof $string) 1))]
         }
         else { # remove at 0
-            set $ret (string-range $string 1 (- $string_size 1))
+            set $ret (string-range $string 1 (- (sizeof $string) 1))
         }
     }
     else {
@@ -460,11 +451,9 @@ function string-replace string replacee replacement {
     local last 0
     local replaced 0
     local at 0
-    local string_size (sizeof $string)
-    local replacee_size (sizeof $replacee)
 
 
-    loop(&& [<= (+ $last $replacee_size) $string_size] [! $break]) {
+    loop(&& [<= (+ $last [sizeof $replacee]) (sizeof $string)] [! $break]) {
         set $at (string-search $string $replacee $last)
 
         if(!= $at -1) {
@@ -482,7 +471,7 @@ function string-replace string replacee replacement {
                 }
             }
 
-            set $last (+ $at $replacee_size)
+            set $last (+ $at [sizeof $replacee])
         }
         else {
             ++ $break
@@ -491,8 +480,8 @@ function string-replace string replacee replacement {
     if(! $replaced) {
         set $ret (copy $string)
     }
-    elseif(< $last $string_size) { # copy the remaining part of the string if there is any
-        set $ret [string $ret (string-range $string $last [- $string_size 1])]
+    elseif(< $last [sizeof $string]) { # copy the remaining part of the string if there is any
+        set $ret [string $ret (string-range $string $last [- (sizeof $string) 1])]
     }
 
     pass $ret
