@@ -1,0 +1,16 @@
+import stdlib.sts
+
+local var 0
+local container [array]
+local i 0
+
+
+loop(< $i 10) {
+    set $var (string-tokenize [string "hello world " $i] l)
+    insert $container (sizeof $container) (copy $var)
+    print test: $var
+
+    ++ $i
+}
+
+print (string-value-print $container)
