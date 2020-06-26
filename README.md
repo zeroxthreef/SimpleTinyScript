@@ -71,6 +71,9 @@ recursively copies the value passed
 **number var**
 turns a string value into a number
 
+**char string index**
+returns the numeric value of the character in 'string' at position 'index'
+
 **get var index**
 returns the value in 'var' at 'index'. Only works on arrays and strings
 

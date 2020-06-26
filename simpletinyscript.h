@@ -744,6 +744,19 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			}
 			else {STS_ERROR_SIMPLE("number action requires 1 argument string"); return NULL;}
 		}
+		ACTION(else if, "char")
+		{
+			if(args->next && args->next->next)
+			{
+				EVAL_ARG(args->next); temp_value_arg = eval_value;
+				EVAL_ARG(args->next->next);
+				if(temp_value_arg->type == STS_STRING && eval_value->type == STS_NUMBER && (unsigned int)eval_value->number < temp_value_arg->string.length){ VALUE_FROM_NUMBER(ret, temp_value_arg->string.data[(unsigned int)eval_value->number]); }
+				else {STS_ERROR_SIMPLE("char action requires the arguments to be a string and a number to fall within the bounds of the string"); sts_value_reference_decrement(script, temp_value_arg); sts_value_reference_decrement(script, eval_value); return NULL;}
+				if(!sts_value_reference_decrement(script, temp_value_arg)) STS_ERROR_SIMPLE("could not decrement references for first argument in char action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in char action");
+			}
+			else {STS_ERROR_SIMPLE("char action requires 1 argument string and 1 number argument"); return NULL;}
+		}
 		ACTION(else if, "get") /* indexes arrays and gets members for more complex types  */
 		{
 			if(args->next && args->next->next)
