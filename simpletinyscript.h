@@ -46,6 +46,7 @@ typedef struct sts_script_t sts_script_t;
 typedef struct sts_value_t sts_value_t;
 typedef struct sts_node_t sts_node_t;
 typedef struct sts_ast_container_t sts_ast_container_t;
+typedef struct sts_name_container_t sts_name_container_t;
 typedef struct sts_map_row_t sts_map_row_t;
 
 /* structures */
@@ -64,11 +65,18 @@ struct sts_node_t
 	char type;
 	sts_value_t *value;
 	unsigned int line;
+	sts_name_container_t *name;
 };
 
 struct sts_ast_container_t
 {
 	sts_node_t *node;
+	unsigned int references;
+};
+
+struct sts_name_container_t
+{
+	char *script_name;
 	unsigned int references;
 };
 
@@ -127,6 +135,9 @@ int sts_destroy(sts_script_t *script);
 
 /* the default functions and behavior */
 sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_map_row_t **locals, sts_value_t **previous);
+
+/* apply a name container to the ast */
+int sts_ast_apply_name(sts_script_t *script, sts_node_t *node, sts_name_container_t *name);
 
 /* copy an ast from the provided node */
 sts_node_t *sts_ast_copy(sts_script_t *script, sts_node_t *node);
@@ -270,6 +281,7 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 	sts_node_t *container_node = NULL, *container_progress = NULL, *expression_node = NULL, *expression_progress = NULL, *temp_expression_node = NULL;
 	unsigned int start = 0, break_out = 0;
 	sts_value_t *value = NULL;
+	sts_name_container_t *name = NULL;
 
 	#define PARSER_ERROR(str) do{ STS_ERROR_PRINT(STS_ERROR_PRINT_ARG0 "parser error: line %u, " str STS_ERROR_CONCAT, *line); return NULL;}while(0)
 	#define PARSER_SKIP_WHITESPACE() while(script_text[*offset] && script_text[*offset] != '\n' && isspace(script_text[*offset]))(*offset)++
@@ -296,6 +308,8 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 			PARSER_ERROR("could not parse script");
 		container_node->child = temp_expression_node;
 		STS_FREE(expression_node);
+		if(!(name = calloc(1, sizeof(sts_name_container_t))) || sts_ast_apply_name(script, container_node, name)) PARSER_ERROR("could not apply the name container to the ast");
+		name->script_name = sts_memdup(script_name, strlen(script_name));
 		return container_node;
 	}
 	
@@ -375,7 +389,7 @@ sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_map_row_t **loc
 	sts_map_row_t *row = NULL;
 	sts_value_t *ret = NULL, *temp = NULL;
 	#define EVAL_PREVIOUS_REFDEC() if(!sts_value_reference_decrement(script, *previous)) STS_ERROR_SIMPLE("could not decrement references in previous")
-	#define STS_EVAL_ERROR_PRINT do{ STS_ERROR_PRINT(STS_ERROR_PRINT_ARG0 "eval error: line %u" STS_ERROR_CONCAT, ast->line);}while(0)
+	#define STS_EVAL_ERROR_PRINT do{ STS_ERROR_PRINT(STS_ERROR_PRINT_ARG0 "eval error: %s: line %u" STS_ERROR_CONCAT, ast->name->script_name, ast->line);}while(0)
 	if(!locals) locals = &script->globals; /* make locals be pretty much globals outside of functions */
 	if(!previous)
 	{
@@ -734,6 +748,11 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			}
 			else {STS_ERROR_SIMPLE("copy action requires 1 argument"); return NULL;}
 		}
+		ACTION(else if, "self-name")
+		{
+			VALUE_INIT(ret, STS_STRING);
+			if(!(ret->string.data = sts_memdup(args->name->script_name, strlen(args->name->script_name)))){STS_ERROR_SIMPLE("could not duplicate script string"); return NULL;} ret->string.length = strlen(args->name->script_name);
+		}
 		ACTION(else if, "number")
 		{
 			if(args->next)
@@ -1076,6 +1095,18 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 	return ret;
 }
 
+int sts_ast_apply_name(sts_script_t *script, sts_node_t *node, sts_name_container_t *name)
+{
+	do
+	{
+		if(node->name && (--node->name->references) <= 0) STS_FREE(node->name);
+		node->name = name; name->references++;
+		if(node->child && sts_ast_apply_name(script, node->child, name)) return 1;
+	} while((node = node->next));
+
+	return 0;
+}
+
 sts_node_t *sts_ast_copy(sts_script_t *script, sts_node_t *node)
 {
 	sts_node_t *ret = NULL, *progress_node = NULL;
@@ -1102,6 +1133,8 @@ sts_node_t *sts_ast_copy(sts_script_t *script, sts_node_t *node)
 		progress_node->line =node->line;
 		progress_node->type = node->type;
 		progress_node->value = node->value;
+		progress_node->name = node->name;
+		node->name->references++;
 		switch(node->type)
 		{
 			case STS_NODE_EXPRESSION:
@@ -1141,6 +1174,7 @@ void sts_ast_delete(sts_script_t *script, sts_node_t *node)
 					STS_ERROR_SIMPLE("could not decrement references in ast");
 			break;
 		}
+		if((--node->name->references) <= 0){ STS_FREE(node->name->script_name); STS_FREE(node->name);}
 		temp = node;
 		node = node->next;
 		STS_FREE(temp);

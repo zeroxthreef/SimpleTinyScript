@@ -1,4 +1,5 @@
-import examples/importing/other.sts
+import stdlib.sts
+relimport (self-name) other.sts
 
 otherfunc hello 1 2 3 4 5 6
 
