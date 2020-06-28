@@ -90,9 +90,21 @@ function test_string_utils {
     print recombining a string tokenized by "[": (string-combine (string-tokenize "hello[world" "[") "[")
 }
 
+function test_misc {
+    print testing enums
+
+    enum TEST_ONE \
+        TEST_TWO \
+        TEST_THREE \
+        TEST_FOUR
+    
+    print TEST_THREE value: $TEST_THREE
+}
+
 # all tests below =====
 
 test_errors
 test_hashmap
 test_debug_string
 test_string_utils
+test_misc

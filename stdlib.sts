@@ -577,7 +577,14 @@ function expr { # turn arguments into an expression and evaluate it
 }
 
 function enum {
-    # create a bunch of locals
+    local i 0
+
+
+    loop(< $i (sizeof $...)) {
+        global (get $... $i) $i
+
+        ++ $i
+    }
 }
 
 function += lvalue rvalue {set $lvalue (+ $lvalue $rvalue); pass $lvalue} # because all arguments are passed by value, this passes the value and performs the operation on it
