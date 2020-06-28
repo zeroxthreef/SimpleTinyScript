@@ -68,6 +68,9 @@ this always returns the function value regardless of a nil name
 **copy var**
 recursively copies the value passed
 
+**self-name**
+retrieves the script filename from the AST
+
 **number var**
 turns a string value into a number
 
@@ -195,6 +198,12 @@ returns a new string with the character at 'position' removed
 
 **string-replace string replacee replacement**
 returns a new string with 'replacee' replaced with 'replacement' everywhere
+
+**getpwd self**
+returns the pwd when ``self-name`` is passed
+
+**relimport self script**
+imports and uses ``getpwd`` internally when passed ``self-name`` in 'self'
 
 **stdlib-get-error**
 returns nil if no error, and the string of the current stdlib error
