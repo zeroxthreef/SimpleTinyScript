@@ -490,6 +490,27 @@ function string-replace string replacee replacement {
 
 # uncategorized =========================
 
+function getpwd self {
+    local str $nil
+    local pos 0
+
+
+    set $pos (string-rsearch $self /)
+
+    if(< 0 $pos) {
+        set $str (string-range $self 0 $pos)
+    }
+    else {
+        set $str [string ""]
+    }
+
+    pass $str
+}
+
+function relimport self script {
+    pass (import [string (getpwd $self) $script])
+}
+
 function stdlib-get-error {
     local ret "no error"
 
