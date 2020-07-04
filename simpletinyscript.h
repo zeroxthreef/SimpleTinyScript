@@ -163,6 +163,8 @@ int sts_map_remove(sts_map_row_t **row, void *key, unsigned int key_size);
 void *sts_memdup(void *src, unsigned int size);
 
 
+#endif
+
 #ifdef STS_IMPLEMENTATION
 #include <stdio.h>
 #include <stdlib.h>
@@ -1336,5 +1338,3 @@ void *sts_memdup(void *src, unsigned int size)
 
 
 #endif /* STS_IMPLEMENTATION */
-
-#endif
