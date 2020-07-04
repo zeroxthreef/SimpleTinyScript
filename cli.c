@@ -1,7 +1,10 @@
 /* this file is released into the public domain */
 
-#define STS_IMPLEMENTATION
-#include "simpletinyscript.h"
+/* embedding the extras util is optional. The interpreter itself
+is able to run in an embedded environment without the extras, but
+it is much nicer to use with these */
+#define STS_EMBEDDING_EXTRAS_IMPLEMENTATION
+#include "sts_embedding_extras.h"
 
 #include <stdio.h>
 #include <string.h>
