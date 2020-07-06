@@ -11,7 +11,10 @@ it is much nicer to use with these */
 #include <unistd.h>
 
 
-#define CLI_ALLOW_SYSTEM 1
+#ifndef CLI_ALLOW_SYSTEM
+	#define CLI_ALLOW_SYSTEM 1
+#endif
+
 #define PS1 "#"
 
 #ifndef INSTALL_DIR
