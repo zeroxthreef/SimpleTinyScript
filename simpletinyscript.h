@@ -548,7 +548,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(eval_value->type != STS_STRING){STS_ERROR_SIMPLE("could not lookup global because first argument is not a string"); sts_value_reference_decrement(script, eval_value); return NULL;}
 				temp_value_arg = eval_value; /* temp value becomes the global name */
 
-				if(locals) row = sts_map_get(&script->globals, temp_value_arg->string.data, temp_value_arg->string.length); /* get the row if it exists */
+				if(script->globals) row = sts_map_get(&script->globals, temp_value_arg->string.data, temp_value_arg->string.length); /* get the row if it exists */
 
 				if(args->next->next) /* set global */
 				{
@@ -587,7 +587,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(eval_value->type != STS_STRING){STS_ERROR_SIMPLE("could not lookup local because first argument is not a string"); sts_value_reference_decrement(script, eval_value); return NULL;}
 				temp_value_arg = eval_value; /* temp value becomes the local name */
 
-				row = sts_map_get(locals, temp_value_arg->string.data, temp_value_arg->string.length); /* get the row if it exists */
+				if(locals) row = sts_map_get(locals, temp_value_arg->string.data, temp_value_arg->string.length); /* get the row if it exists */
 
 				if(args->next->next) /* set local */
 				{
