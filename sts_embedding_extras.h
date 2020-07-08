@@ -28,7 +28,7 @@ unsigned int sts_hash(void *data, unsigned int size);
 
 void sts_string_assemble(char **dest, unsigned int current_size, char *middle_str, unsigned int middle_size, char *end_str, unsigned int end_size);
 
-int sts_destroy_map(sts_map_row_t *row);
+int sts_destroy_map(sts_script_t *script, sts_map_row_t *row);
 
 
 #ifdef STS_EMBEDDING_EXTRAS_IMPLEMENTATION
@@ -133,7 +133,7 @@ void sts_string_assemble(char **dest, unsigned int current_size, char *middle_st
 	STS_STRING_ASSEMBLE(*dest, current_size, middle_str, middle_size, end_str, end_size);
 }
 
-int sts_destroy_map(sts_map_row_t *row)
+int sts_destroy_map(sts_script_t *script, sts_map_row_t *row)
 {
 	STS_DESTROY_MAP(row, 0);
 
