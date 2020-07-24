@@ -30,9 +30,9 @@ void sts_string_assemble(char **dest, unsigned int current_size, char *middle_st
 
 int sts_destroy_map(sts_script_t *script, sts_map_row_t *row);
 
-sts_scope_t *sts_scope_push(sts_script_t *stript, sts_scope_t *scope);
+sts_scope_t *sts_scope_push(sts_script_t *script, sts_scope_t *scope);
 
-sts_scope_t *sts_scope_pop(sts_script_t *stript, sts_scope_t *scope);
+sts_scope_t *sts_scope_pop(sts_script_t *script, sts_scope_t *scope);
 
 sts_map_row_t *sts_scope_search(sts_script_t *script, sts_scope_t *scope, void *key, unsigned int key_size);
 
@@ -146,7 +146,7 @@ int sts_destroy_map(sts_script_t *script, sts_map_row_t *row)
 	return 1;
 }
 
-sts_scope_t *sts_scope_push(sts_script_t *stript, sts_scope_t *scope)
+sts_scope_t *sts_scope_push(sts_script_t *script, sts_scope_t *scope)
 {
 	sts_scope_t *ret = scope;
 
@@ -155,7 +155,7 @@ sts_scope_t *sts_scope_push(sts_script_t *stript, sts_scope_t *scope)
 	return ret;
 }
 
-sts_scope_t *sts_scope_pop(sts_script_t *stript, sts_scope_t *scope)
+sts_scope_t *sts_scope_pop(sts_script_t *script, sts_scope_t *scope)
 {
 	sts_scope_t *ret = scope;
 
@@ -168,7 +168,7 @@ sts_map_row_t *sts_scope_search(sts_script_t *script, sts_scope_t *scope, void *
 {
 	sts_map_row_t *ret = NULL;
 
-	STS_SCOPE_SEARCH(scope, key, key_size, ret);
+	STS_SCOPE_SEARCH(scope, key, key_size, ret, {});
 
 	return ret;
 }
