@@ -48,8 +48,15 @@ typedef struct sts_node_t sts_node_t;
 typedef struct sts_ast_container_t sts_ast_container_t;
 typedef struct sts_name_container_t sts_name_container_t;
 typedef struct sts_map_row_t sts_map_row_t;
+typedef struct sts_scope_t sts_scope_t;
 
 /* structures */
+
+struct sts_scope_t
+{
+	sts_scope_t *uplevel;
+	sts_map_row_t *locals;
+};
 
 struct sts_map_row_t
 {
@@ -116,10 +123,10 @@ struct sts_script_t
 	char *name;
 	void *userdata;
 	sts_node_t *script;
-	sts_map_row_t *globals;
+	sts_scope_t *globals;
 	char *(*read_file)(sts_script_t *script, char *file, unsigned int *size);
 	char *(*import_file)(sts_script_t *script, char *file);
-	sts_value_t *(*router)(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_map_row_t **locals, sts_value_t **previous);
+	sts_value_t *(*router)(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_scope_t *locals, sts_value_t **previous);
 };
 
 /* function prototypes */
@@ -128,13 +135,13 @@ struct sts_script_t
 sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_text, char *script_name, unsigned int *offset, unsigned int *line);
 
 /* evaluate value/value list */
-sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_map_row_t **locals, sts_value_t **previous, int single);
+sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_scope_t *locals, sts_value_t **previous, int single, int newscope);
 
 /* cleanup */
 int sts_destroy(sts_script_t *script);
 
 /* the default functions and behavior */
-sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_map_row_t **locals, sts_value_t **previous);
+sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_scope_t *locals, sts_value_t **previous);
 
 /* apply a name container to the ast */
 int sts_ast_apply_name(sts_script_t *script, sts_node_t *node, sts_name_container_t *name);
@@ -234,8 +241,8 @@ void *sts_memdup(void *src, unsigned int size);
 
 #define STS_HASH(variable, data, size) do{unsigned int i; for(i = 0; i < (size); ++i){(variable) ^= ((char *)(data))[i]; (variable) *= STS_FNV_PRIME;} }while(0)
 
-#define STS_DESTROY_MAP(row, return_error) do{sts_map_row_t *current, *temp; current = row; do{	\
-		if(current->value && current->type == STS_ROW_VALUE) if(!sts_value_reference_decrement(script, (sts_value_t *)current->value)){STS_ERROR_SIMPLE("could not decrement reference in map"); return return_error;}	\
+#define STS_DESTROY_MAP(row, on_error) do{sts_map_row_t *current, *temp; current = row; do{	\
+		if(current->value && current->type == STS_ROW_VALUE) if(!sts_value_reference_decrement(script, (sts_value_t *)current->value)){STS_ERROR_SIMPLE("could not decrement reference in map"); {on_error}}	\
 		temp = current; current = current->next;	\
 		STS_FREE(temp);	\
 	}while(current); }while(0)
@@ -275,6 +282,35 @@ void *sts_memdup(void *src, unsigned int size);
 			} modified = 0;	\
 		}	\
 	}while(0)
+
+#define STS_SCOPE_CREATE (STS_CALLOC(1, sizeof(sts_scope_t)))
+
+/* can be used to initialize a root scope */
+#define STS_SCOPE_PUSH(scope, on_error) do{ sts_scope_t *push_placeholder = NULL;	\
+		if(!(scope)){	\
+			if(!((scope) = STS_SCOPE_CREATE)){ STS_ERROR_SIMPLE("could not initialize scope"); {on_error}}	\
+		}else{	\
+			push_placeholder = (scope);	\
+			if(!((scope) = STS_SCOPE_CREATE)){ STS_ERROR_SIMPLE("could not initialize new scope stack level"); (scope) = push_placeholder; {on_error}}	\
+			(scope)->uplevel = push_placeholder;	\
+		}	\
+	}while(0)
+
+#define STS_SCOPE_POP(scope, on_error) do{ sts_scope_t *pop_placeholder = NULL;	\
+		if((scope)){	\
+			if((scope)->locals) STS_DESTROY_MAP((scope)->locals, {on_error});	\
+			pop_placeholder = (scope)->uplevel;	\
+			STS_FREE((scope)); (scope) = pop_placeholder;	\
+		}	\
+	}while(0)
+
+#define STS_SCOPE_SEARCH(scope, data, size, result, on_error) do{ sts_map_row_t *internal_row; sts_scope_t *internal_temp = (scope); if((scope)){	\
+		do{	\
+			if((internal_row = sts_map_get(&internal_temp->locals, (data), (size)))){	\
+				(result) = internal_row; break;	\
+			}	\
+		} while((internal_temp = internal_temp->uplevel));	\
+	}}while(0)
 
 /* definitions */
 
@@ -385,14 +421,16 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 	return container_node;
 }
 
-sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_map_row_t **locals, sts_value_t **previous, int single)
+sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_scope_t *locals, sts_value_t **previous, int single, int newscope)
 {
 	int created_previous = 0;
 	sts_map_row_t *row = NULL;
 	sts_value_t *ret = NULL, *temp = NULL;
 	#define EVAL_PREVIOUS_REFDEC() if(!sts_value_reference_decrement(script, *previous)) STS_ERROR_SIMPLE("could not decrement references in previous")
 	#define STS_EVAL_ERROR_PRINT do{ STS_ERROR_PRINT(STS_ERROR_PRINT_ARG0 "eval error: %s: line %u" STS_ERROR_CONCAT, ast->name->script_name, ast->line);}while(0)
-	if(!locals) locals = &script->globals; /* make locals be pretty much globals outside of functions */
+	if(!script->globals) STS_SCOPE_PUSH(script->globals, {STS_ERROR_SIMPLE("couldnt initialize global scope"); return NULL;}); /* initialize global scope */
+	if(!locals) locals = script->globals; /* make locals be pretty much globals outside of functions */
+	if(newscope) STS_SCOPE_PUSH(locals, {STS_ERROR_SIMPLE("could not create new locals in eval"); return NULL;});
 	if(!previous)
 	{
 		if(!STS_CREATE_VALUE(temp)) STS_ERROR_SIMPLE("could not create previous value");
@@ -401,16 +439,13 @@ sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_map_row_t **loc
 	}
 	switch(ast->type)
 	{
-		case STS_NODE_IDENTIFIER: /* search locals and globals */
-			if(locals && strcmp(ast->value->string.data + 1, "nil") != 0 && (row = sts_map_get(locals, ast->value->string.data + 1, ast->value->string.length - 1)))
+		case STS_NODE_IDENTIFIER: /* search entire scope */
+			if(strcmp(ast->value->string.data + 1, "nil") != 0)
 			{
-				if(row->value){ret = row->value; STS_VALUE_REFINC(script, ret);} else{ STS_ERROR_SIMPLE("could not return row value"); return NULL;}
+				STS_SCOPE_SEARCH(locals, ast->value->string.data + 1, ast->value->string.length - 1, row, {});
+				if(row){ret = row->value; STS_VALUE_REFINC(script, ret);}
 			}
-			else if(strcmp(ast->value->string.data + 1, "nil") != 0 && (row = sts_map_get(&script->globals, ast->value->string.data + 1, ast->value->string.length - 1)))
-			{
-				if(row->value){ret = row->value; STS_VALUE_REFINC(script, ret);} else{ STS_ERROR_SIMPLE("could not return row value"); return NULL;}
-			}
-			else{ if(!(STS_CREATE_VALUE(ret))) STS_ERROR_SIMPLE("could not create and initialize nil value"); else{ret->references = 1; ret->type = STS_NIL;} }
+			if(!ret){ if(!(STS_CREATE_VALUE(ret))) STS_ERROR_SIMPLE("could not create and initialize nil value"); else{ret->references = 1; ret->type = STS_NIL;} }
 		break;
 		case STS_NODE_VALUE:
 			ret = ast->value; STS_VALUE_REFINC(script, ret);
@@ -422,24 +457,25 @@ sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_map_row_t **loc
 				if(!ast->child){ret = *previous; STS_VALUE_REFINC(script, (*previous)); return ret;} /* substitute the previous value as the return value */
 				else if(ast->child->type != STS_NODE_EXPRESSION) /* an expression with a starting value */
 				{
-					if(!(temp = sts_eval(script, ast->child, locals, previous, single))){STS_ERROR_SIMPLE("could not eval action"); return NULL;} /* make an action value for the router. Because it is evaluated, it means any kind of substitution works */
+					if(!(temp = sts_eval(script, ast->child, locals, previous, single, 0))){STS_ERROR_SIMPLE("could not eval action"); return NULL;} /* make an action value for the router. Because it is evaluated, it means any kind of substitution works */
 					if(!(ret = script->router(script, temp, ast->child, locals, previous))){STS_EVAL_ERROR_PRINT; return NULL;} /* decide what to do based off of the starting value */
 					if(!sts_value_reference_decrement(script, temp)){STS_ERROR_SIMPLE("could not decrement action references"); return NULL;} /* clean up the action value used to control what the router does */
 					EVAL_PREVIOUS_REFDEC(); *previous = ret; STS_VALUE_REFINC(script, ret); /* carry the previous value along the list of expressions */
 				}
 				else if(ast->child)
-					if(!(ret = sts_eval(script, ast->child, locals, previous, single))){return NULL;} /* eval the nested expression */
+					if(!(ret = sts_eval(script, ast->child, locals, previous, single, 0))){return NULL;} /* eval the nested expression */
 			} while((ast = ast->next) && !single);
 		break;
 	}
 	if(created_previous) if(!sts_value_reference_decrement(script, *previous)) {STS_ERROR_SIMPLE("could not decrement previous value references"); return NULL;}
+	if(newscope) STS_SCOPE_POP(locals, {STS_ERROR_SIMPLE("couldnt pop eval scope");});
 	if(!ret){ STS_EVAL_ERROR_PRINT;}
 	return ret;
 }
 
 int sts_destroy(sts_script_t *script)
 {
-	if(script->globals) STS_DESTROY_MAP(script->globals, 0);
+	if(script->globals) STS_SCOPE_POP(script->globals, {STS_ERROR_SIMPLE("could not clean up globals");});
 	sts_ast_delete(script, script->script);
 
 	return 1;
@@ -479,7 +515,7 @@ int sts_value_reference_decrement(sts_script_t *script, sts_value_t *value)
 	return 1;
 }
 
-sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_map_row_t **locals, sts_value_t **previous)
+sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_scope_t *locals, sts_value_t **previous)
 {
 	unsigned int i = 0, can_loop = 0, temp_uint = 0, temp0_uint = 0;
 	char *temp_str = NULL;
@@ -487,13 +523,13 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 	sts_map_row_t *row = NULL, *new_locals = NULL;
 	sts_ast_container_t *temp_container = NULL;
 	sts_value_t *ret = NULL, *eval_value = NULL, *temp_value_arg = NULL, *temp_value = NULL;
-	#define EVAL_ARG(argument) do{if(!(eval_value = sts_eval(script, argument, locals, previous, 1))){STS_ERROR_SIMPLE("could not eval argument"); } }while(0)
-	#define EVAL_ARG_ALL(argument) do{if(!(eval_value = sts_eval(script, argument, locals, previous, 0))){STS_ERROR_SIMPLE("could not eval argument"); } }while(0)
+	#define EVAL_ARG(argument) do{if(!(eval_value = sts_eval(script, argument, locals, previous, 1, 0))){STS_ERROR_SIMPLE("could not eval argument"); } }while(0)
+	#define EVAL_ARG_ALL(argument) do{if(!(eval_value = sts_eval(script, argument, locals, previous, 0, 0))){STS_ERROR_SIMPLE("could not eval argument"); } }while(0)
 	#define VALUE_FROM_NUMBER(value_ptr, set_number) do{if(!(STS_CREATE_VALUE(value_ptr))) STS_ERROR_SIMPLE("could not create value for number"); else{value_ptr->references = 1; value_ptr->type = STS_NUMBER; value_ptr->number = (float)set_number;} }while(0)
 	#define VALUE_INIT(value_ptr, set_type) do{if(!(STS_CREATE_VALUE(value_ptr))) STS_ERROR_SIMPLE("could not create and initialize value"); else{value_ptr->references = 1; value_ptr->type = set_type;} }while(0)
 	#define ACTION(test, str) test(strcmp(str, action->string.data) == 0)
 	#define ACTION_BEGIN_ARGLOOP while((args = args->next))	\
-		{ if(!(eval_value = sts_eval(script, args, locals, previous, 1))){STS_ERROR_SIMPLE("could not eval argument in loop"); break;}
+		{ if(!(eval_value = sts_eval(script, args, locals, previous, 1, 0))){STS_ERROR_SIMPLE("could not eval argument in loop"); break;}
 	#define ACTION_END_ARGLOOP if(!sts_value_reference_decrement(script, eval_value)){STS_ERROR_SIMPLE("could not decrement references in eval argument"); break;} }
 
 	if(!action){STS_ERROR_SIMPLE("action is NULL"); return NULL;}
@@ -548,7 +584,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(eval_value->type != STS_STRING){STS_ERROR_SIMPLE("could not lookup global because first argument is not a string"); sts_value_reference_decrement(script, eval_value); return NULL;}
 				temp_value_arg = eval_value; /* temp value becomes the global name */
 
-				if(script->globals) row = sts_map_get(&script->globals, temp_value_arg->string.data, temp_value_arg->string.length); /* get the row if it exists */
+				if(script->globals) row = sts_map_get(&script->globals->locals, temp_value_arg->string.data, temp_value_arg->string.length); /* get the row if it exists */
 
 				if(args->next->next) /* set global */
 				{
@@ -563,7 +599,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 					else
 					{
 						VALUE_INIT(temp_value, eval_value->type); if(sts_value_copy(script, temp_value, eval_value, 0)){ STS_ERROR_SIMPLE("could not set a new value to evaluated argument in global action"); return NULL;}
-						if(!(row = sts_map_add_set(&script->globals, temp_value_arg->string.data, temp_value_arg->string.length, temp_value))){STS_ERROR_SIMPLE("could not add value to global in global action"); return NULL;}
+						if(!(row = sts_map_add_set(&script->globals->locals, temp_value_arg->string.data, temp_value_arg->string.length, temp_value))){STS_ERROR_SIMPLE("could not add value to global in global action"); return NULL;}
 						row->type = STS_ROW_VALUE;
 						ret = temp_value; STS_VALUE_REFINC(script, temp_value);
 					}
@@ -587,7 +623,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(eval_value->type != STS_STRING){STS_ERROR_SIMPLE("could not lookup local because first argument is not a string"); sts_value_reference_decrement(script, eval_value); return NULL;}
 				temp_value_arg = eval_value; /* temp value becomes the local name */
 
-				if(locals) row = sts_map_get(locals, temp_value_arg->string.data, temp_value_arg->string.length); /* get the row if it exists */
+				if(locals) row = sts_map_get(&locals->locals, temp_value_arg->string.data, temp_value_arg->string.length); /* get the row if it exists */
 
 				if(args->next->next) /* set local */
 				{
@@ -602,7 +638,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 					else
 					{
 						VALUE_INIT(temp_value, eval_value->type); if(sts_value_copy(script, temp_value, eval_value, 0)){ STS_ERROR_SIMPLE("could not set a new value to evaluated argument in local action"); return NULL;}
-						if(!(row = sts_map_add_set(locals, temp_value_arg->string.data, temp_value_arg->string.length, temp_value))){STS_ERROR_SIMPLE("could not add value to locals in local action"); return NULL;}
+						if(!(row = sts_map_add_set(&locals->locals, temp_value_arg->string.data, temp_value_arg->string.length, temp_value))){STS_ERROR_SIMPLE("could not add value to locals in local action"); return NULL;}
 						row->type = STS_ROW_VALUE;
 						ret = temp_value; STS_VALUE_REFINC(script, temp_value);
 					}
@@ -729,10 +765,10 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 					ACTION_END_ARGLOOP
 				}
 
-				if(temp_value_arg->type == STS_STRING) /* only put the function in global var space if a string for function name */
+				if(temp_value_arg->type == STS_STRING) /* only put the function in local var space if a string for function name */
 				{
-					if((row = sts_map_get(locals, temp_value_arg->string.data, temp_value_arg->string.length))) if(!sts_value_reference_decrement(script, row->value)) STS_ERROR_SIMPLE("could not decrement references for old function value");
-					sts_map_add_set(locals, temp_value_arg->string.data, temp_value_arg->string.length, ret);
+					if((row = sts_map_get(&locals->locals, temp_value_arg->string.data, temp_value_arg->string.length))) if(!sts_value_reference_decrement(script, row->value)) STS_ERROR_SIMPLE("could not decrement references for old function value");
+					sts_map_add_set(&locals->locals, temp_value_arg->string.data, temp_value_arg->string.length, ret);
 					STS_VALUE_REFINC(script, ret);
 				}
 
@@ -879,7 +915,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 						temp_uint = temp0_uint = 0;
 						if(!(temp_node = sts_parse(script, NULL, temp_str, eval_value->string.data, &temp_uint, &temp0_uint)))
 							STS_ERROR_SIMPLE("could not parse imported file");
-						else if(!(temp_value = sts_eval(script, temp_node, NULL, NULL, 0)))
+						else if(!(temp_value = sts_eval(script, temp_node, NULL, NULL, 0, 0)))
 							STS_ERROR_SIMPLE("could not evaluate the imported file");
 						else
 						{
@@ -903,7 +939,8 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(temp_value_arg->type != STS_FUNCTION){ STS_ERROR_SIMPLE("the call action requires the first argument to be a function value"); return NULL;}
 				args = args->next;
 				VALUE_INIT(temp_value, STS_ARRAY); if(!temp_value){STS_ERROR_SIMPLE("could not create elipses value in call action"); return NULL;}
-				if(!sts_map_add_set(&new_locals, "...", strlen("..."), temp_value))
+				STS_SCOPE_PUSH(locals, {STS_ERROR_SIMPLE("couldnt create new scope level"); return NULL;});
+				if(!sts_map_add_set(&locals->locals, "...", strlen("..."), temp_value))
 				{
 					STS_ERROR_SIMPLE("could not create local scope in call action"); return NULL;
 				}
@@ -911,7 +948,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 					STS_VALUE_REFINC(script, eval_value);
 					if(i < temp_value_arg->function.argument_identifiers->array.length) /* create identifiers for each argument */
 					{
-						if(!sts_map_add_set(&new_locals, temp_value_arg->function.argument_identifiers->array.data[i]->string.data, temp_value_arg->function.argument_identifiers->array.data[i]->string.length, eval_value))
+						if(!sts_map_add_set(&locals->locals, temp_value_arg->function.argument_identifiers->array.data[i]->string.data, temp_value_arg->function.argument_identifiers->array.data[i]->string.length, eval_value))
 						{
 							STS_ERROR_SIMPLE("could not create local scope in call action"); return NULL;
 						}
@@ -921,8 +958,8 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 					++i;
 				ACTION_END_ARGLOOP
 				if(i < temp_value_arg->function.argument_identifiers->array.length){STS_ERROR_SIMPLE("too few arguments provided to function provided to call action"); return NULL;}
-				ret = sts_eval(script, temp_value_arg->function.body->node, &new_locals, NULL, 0);
-				STS_DESTROY_MAP(new_locals, NULL);
+				ret = sts_eval(script, temp_value_arg->function.body->node, locals, NULL, 0, 0);
+				STS_SCOPE_POP(locals, {STS_ERROR_SIMPLE("could not pop scope level"); return NULL;});
 				if(!sts_value_reference_decrement(script, temp_value_arg)) STS_ERROR_SIMPLE("could not decrement references for first argument in call action");
 			}
 			else {STS_ERROR_SIMPLE("call action requires at least 1 argument"); return NULL;}
@@ -1070,29 +1107,34 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		ACTION_SINGLE_NUMERIC(script, floor)
 		ACTION_SINGLE_NUMERIC(script, ceil)
 	} /* end of string comparison for action. Up next is global (local really) function search */
-	if(!ret && action->type == STS_STRING && ( (row = sts_map_get(locals, action->string.data, action->string.length)) || (row = sts_map_get(&script->globals, action->string.data, action->string.length)) ) && ((sts_value_t *)row->value)->type == STS_FUNCTION) /* look for functions to call */
+	if(!ret && action->type == STS_STRING) /* look for functions to call */
 	{
-		VALUE_INIT(temp_value, STS_ARRAY); if(!temp_value){STS_ERROR_SIMPLE("could not create elipses value"); return NULL;}
-		if(!sts_map_add_set(&new_locals, "...", strlen("..."), temp_value))
+		STS_SCOPE_SEARCH(locals, action->string.data, action->string.length, row, {});
+		if(row && ((sts_value_t *)row->value)->type == STS_FUNCTION)
 		{
-			STS_ERROR_SIMPLE("could not create local scope"); return NULL;
-		}
-		ACTION_BEGIN_ARGLOOP
-			STS_VALUE_REFINC(script, eval_value);
-			if(i < ((sts_value_t *)row->value)->function.argument_identifiers->array.length) /* create identifiers for each argument */
+			VALUE_INIT(temp_value, STS_ARRAY); if(!temp_value){STS_ERROR_SIMPLE("could not create elipses value"); return NULL;}
+			STS_SCOPE_PUSH(locals, {STS_ERROR_SIMPLE("couldnt create new scope level"); return NULL;});
+			if(!sts_map_add_set(&locals->locals, "...", strlen("..."), temp_value))
 			{
-				if(!sts_map_add_set(&new_locals, ((sts_value_t *)row->value)->function.argument_identifiers->array.data[i]->string.data, ((sts_value_t *)row->value)->function.argument_identifiers->array.data[i]->string.length, eval_value))
-				{
-					STS_ERROR_SIMPLE("could not create local scope"); return NULL;
-				}
+				STS_ERROR_SIMPLE("could not create local scope"); return NULL;
 			}
-			else /* if extra arguments passed, put in elipses */
-				STS_ARRAY_APPEND_INSERT(temp_value, eval_value, i);
-			++i;
-		ACTION_END_ARGLOOP
-		if(i < ((sts_value_t *)row->value)->function.argument_identifiers->array.length){STS_ERROR_SIMPLE("too few arguments provided"); return NULL;}
-		ret = sts_eval(script, ((sts_value_t *)row->value)->function.body->node, &new_locals, NULL, 0);
-		STS_DESTROY_MAP(new_locals, NULL);
+			ACTION_BEGIN_ARGLOOP
+				STS_VALUE_REFINC(script, eval_value);
+				if(i < ((sts_value_t *)row->value)->function.argument_identifiers->array.length) /* create identifiers for each argument */
+				{
+					if(!sts_map_add_set(&locals->locals, ((sts_value_t *)row->value)->function.argument_identifiers->array.data[i]->string.data, ((sts_value_t *)row->value)->function.argument_identifiers->array.data[i]->string.length, eval_value))
+					{
+						STS_ERROR_SIMPLE("could not create local scope"); return NULL;
+					}
+				}
+				else /* if extra arguments passed, put in elipses */
+					STS_ARRAY_APPEND_INSERT(temp_value, eval_value, i);
+				++i;
+			ACTION_END_ARGLOOP
+			if(i < ((sts_value_t *)row->value)->function.argument_identifiers->array.length){STS_ERROR_SIMPLE("too few arguments provided"); return NULL;}
+			ret = sts_eval(script, ((sts_value_t *)row->value)->function.body->node, locals, NULL, 0, 0);
+			STS_SCOPE_POP(locals, {STS_ERROR_SIMPLE("could not pop scope level"); return NULL;});
+		}
 	}
 	return ret;
 }

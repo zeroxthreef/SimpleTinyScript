@@ -109,4 +109,19 @@ print | $original | -- | $copything |
 
 print =========================
 
-import array_tests.sts
+import examples/array_test.sts
+
+global thing "hello, im a global"
+
+function test arg {
+	local internal_var "im a local var"
+
+	function internal arg {
+		print cool argument: $arg , $thing , $internal_var
+	}
+	print hello from container func $arg , $thing , $internal_var
+
+	internal "new arg"
+}
+
+test "old arg"

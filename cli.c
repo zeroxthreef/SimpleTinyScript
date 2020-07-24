@@ -155,7 +155,7 @@ int repl(sts_script_t *script)
 
 
 		/* eval */
-		ret = sts_eval(script, current_node, NULL, NULL, 0);
+		ret = sts_eval(script, current_node, NULL, NULL, 0, 0);
 		if(ret && !sts_value_reference_decrement(script, ret)) fprintf(stderr, "could not clean up returned value\n");
 		else if(!ret) fprintf(stderr, "command error\n");
 
@@ -225,7 +225,7 @@ char *import(sts_script_t *script, char *file)
 	return ret;
 }
 
-sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_map_row_t **locals, sts_value_t **previous)
+sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_scope_t *locals, sts_value_t **previous)
 {
 	sts_value_t *ret = NULL, *eval_value = NULL, *temp_value = NULL, *first_arg_value = NULL, *second_arg_value = NULL;
 	FILE *proc_pipe = NULL, *file = NULL;
@@ -625,6 +625,10 @@ int main(int argc, char **argv)
 		return repl(&script);
 	else /* parse the arguments */
 	{
+		/* need to initialize the globals here because theres something set before eval can do it instead */
+		STS_SCOPE_PUSH(script.globals, {fprintf(stderr, "could not initialize global scope"); return 1;});
+
+
 		if(!(args = calloc(1, sizeof(sts_value_t))))
 		{
 			fprintf(stderr, "could not allocate args array\n");
@@ -650,7 +654,7 @@ int main(int argc, char **argv)
 			STS_ARRAY_APPEND_INSERT(args, temp_val, args->array.length);
 		}
 
-		if(!sts_map_add_set(&script.globals, "args", strlen("args"), args))
+		if(!sts_map_add_set(&script.globals->locals, "args", strlen("args"), args))
 		{
 			fprintf(stderr, "could not add args to globals\n");
 				return 1;
@@ -677,7 +681,7 @@ int main(int argc, char **argv)
 	/* debug_ast(script.script, 0); */
 	
 	/* eval */
-	ret = sts_eval(&script, script.script, NULL, NULL, 0);
+	ret = sts_eval(&script, script.script, NULL, NULL, 0, 0);
 	if(ret && ret->type == STS_NUMBER)
 		retval = (int)ret->number;
 	if(ret && !sts_value_reference_decrement(&script, ret)) fprintf(stderr, "could not clean up returned value\n");

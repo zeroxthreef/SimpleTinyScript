@@ -30,6 +30,12 @@ void sts_string_assemble(char **dest, unsigned int current_size, char *middle_st
 
 int sts_destroy_map(sts_script_t *script, sts_map_row_t *row);
 
+sts_scope_t *sts_scope_push(sts_script_t *stript, sts_scope_t *scope);
+
+sts_scope_t *sts_scope_pop(sts_script_t *stript, sts_scope_t *scope);
+
+sts_map_row_t *sts_scope_search(sts_script_t *script, sts_scope_t *scope, void *key, unsigned int key_size);
+
 
 #ifdef STS_EMBEDDING_EXTRAS_IMPLEMENTATION
 
@@ -135,9 +141,36 @@ void sts_string_assemble(char **dest, unsigned int current_size, char *middle_st
 
 int sts_destroy_map(sts_script_t *script, sts_map_row_t *row)
 {
-	STS_DESTROY_MAP(row, 0);
+	STS_DESTROY_MAP(row, {return 0;});
 
 	return 1;
+}
+
+sts_scope_t *sts_scope_push(sts_script_t *stript, sts_scope_t *scope)
+{
+	sts_scope_t *ret = scope;
+
+	STS_SCOPE_PUSH(ret, {return NULL;});
+
+	return ret;
+}
+
+sts_scope_t *sts_scope_pop(sts_script_t *stript, sts_scope_t *scope)
+{
+	sts_scope_t *ret = scope;
+
+	STS_SCOPE_POP(ret, {return NULL;});
+
+	return ret;
+}
+
+sts_map_row_t *sts_scope_search(sts_script_t *script, sts_scope_t *scope, void *key, unsigned int key_size)
+{
+	sts_map_row_t *ret = NULL;
+
+	STS_SCOPE_SEARCH(scope, key, key_size, ret);
+
+	return ret;
 }
 
 #endif
