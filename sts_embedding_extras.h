@@ -141,6 +141,8 @@ void sts_string_assemble(char **dest, unsigned int current_size, char *middle_st
 
 int sts_destroy_map(sts_script_t *script, sts_map_row_t *row)
 {
+	if(!row) return 1;
+	
 	STS_DESTROY_MAP(row, {return 0;});
 
 	return 1;
