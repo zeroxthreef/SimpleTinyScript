@@ -36,6 +36,7 @@ sts_scope_t *sts_scope_pop(sts_script_t *script, sts_scope_t *scope);
 
 sts_map_row_t *sts_scope_search(sts_script_t *script, sts_scope_t *scope, void *key, unsigned int key_size);
 
+#endif /* end STS_EMBEDDING_EXTRAS_H__ */
 
 #ifdef STS_EMBEDDING_EXTRAS_IMPLEMENTATION
 
@@ -176,5 +177,3 @@ sts_map_row_t *sts_scope_search(sts_script_t *script, sts_scope_t *scope, void *
 }
 
 #endif
-
-#endif /* end STS_EMBEDDING_EXTRAS_H__ */
