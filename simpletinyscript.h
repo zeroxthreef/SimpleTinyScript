@@ -550,7 +550,6 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 	{
 		ACTION(if, "print")
 		{
-			printf("should only print once\n");
 			GOTO_SET(&sts_defaults);
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
