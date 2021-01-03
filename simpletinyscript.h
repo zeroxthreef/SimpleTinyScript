@@ -73,6 +73,9 @@ struct sts_node_t
 	sts_value_t *value;
 	unsigned int line;
 	sts_name_container_t *name;
+	#ifdef STS_GOTO_JIT
+	void *label, *router_id;
+	#endif
 };
 
 struct sts_ast_container_t
@@ -531,12 +534,24 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 	#define ACTION_BEGIN_ARGLOOP while((args = args->next))	\
 		{ if(!(eval_value = sts_eval(script, args, locals, previous, 1, 0))){STS_ERROR_SIMPLE("could not eval argument in loop"); break;}
 	#define ACTION_END_ARGLOOP if(!sts_value_reference_decrement(script, eval_value)){STS_ERROR_SIMPLE("could not decrement references in eval argument"); break;} }
+	#ifdef STS_GOTO_JIT
+		#define GOTO_LABEL_CAT_(a, b) a ## b
+		#define GOTO_LABEL_CAT(a, b) GOTO_LABEL_CAT_(a, b)
+		#define GOTO_SET(id) do{args->label = && GOTO_LABEL_CAT(sts_jit_, __LINE__); args->router_id = (void *)(id); GOTO_LABEL_CAT(sts_jit_, __LINE__):;}while(0)
+		#define GOTO_JMP(id) do{if(args->router_id == (void *)(id)){goto *(args->label);}}while(0)
+	#else
+		#define GOTO_SET(id)
+		#define GOTO_JMP(id)
+	#endif
 
+	GOTO_JMP(&sts_defaults);
 	if(!action){STS_ERROR_SIMPLE("action is NULL"); return NULL;}
 	if(action->type == STS_STRING)
 	{
 		ACTION(if, "print")
 		{
+			printf("should only print once\n");
+			GOTO_SET(&sts_defaults);
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
@@ -556,6 +571,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "pass")
 		{
+			GOTO_SET(&sts_defaults);
 			ACTION_BEGIN_ARGLOOP
 				if(ret) if(!sts_value_reference_decrement(script, ret)){STS_ERROR_SIMPLE("could not decrement references in pass action"); sts_value_reference_decrement(script, eval_value); return NULL; }
 				ret = eval_value; STS_VALUE_REFINC(script, ret);
@@ -563,6 +579,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "string")
 		{
+			GOTO_SET(&sts_defaults);
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
@@ -578,6 +595,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "global")
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next)
 			{
 				EVAL_ARG(args->next);
@@ -617,6 +635,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "local") /* will only run if locals exist */
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next)
 			{
 				EVAL_ARG(args->next);
@@ -656,6 +675,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "string-hash")
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next)
 			{
 				EVAL_ARG(args->next); if(eval_value->type == STS_STRING) STS_HASH(temp_uint, eval_value->string.data, eval_value->string.length);
@@ -666,6 +686,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "typeof")
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next)
 			{
 				EVAL_ARG(args->next); switch(eval_value->type)
@@ -683,6 +704,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "sizeof")
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next)
 			{
 				EVAL_ARG(args->next); switch(eval_value->type)
@@ -698,6 +720,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		else if(strcmp("if", action->string.data) == 0 || strcmp("elseif", action->string.data) == 0 || strcmp("loop", action->string.data) == 0)
 		{
+			GOTO_SET(&sts_defaults);
 			if(strcmp("elseif", action->string.data) == 0 && (*previous)->type == STS_NUMBER && (*previous)->number) {VALUE_INIT(ret, STS_NUMBER); ret->number = 1.0; return ret;} /* cascade previous value and only run if zero */
 			if(strcmp("loop", action->string.data) == 0) can_loop = 1;
 			if(args->next && args->next->next)
@@ -720,6 +743,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "else")
 		{
+			GOTO_SET(&sts_defaults);
 			if((*previous)->type == STS_NUMBER && (*previous)->number) {VALUE_INIT(ret, STS_NUMBER); ret->number = 1.0; return ret;} /* cascade previous value and only run if zero */
 			if(args->next)
 			{
@@ -730,6 +754,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "function")
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next && args->next->next)
 			{
 				EVAL_ARG(args->next);
@@ -778,6 +803,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "copy")
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next)
 			{
 				EVAL_ARG(args->next); VALUE_INIT(ret, eval_value->type);
@@ -788,11 +814,13 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "self-name")
 		{
+			GOTO_SET(&sts_defaults);
 			VALUE_INIT(ret, STS_STRING);
 			if(!(ret->string.data = sts_memdup(args->name->script_name, strlen(args->name->script_name)))){STS_ERROR_SIMPLE("could not duplicate script string"); return NULL;} ret->string.length = strlen(args->name->script_name);
 		}
 		ACTION(else if, "number")
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next)
 			{
 				EVAL_ARG(args->next); if(eval_value->type == STS_STRING){ VALUE_FROM_NUMBER(ret, strtod(eval_value->string.data, NULL)); }
@@ -803,6 +831,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "char")
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next && args->next->next)
 			{
 				EVAL_ARG(args->next); temp_value_arg = eval_value;
@@ -816,6 +845,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "get") /* indexes arrays and gets members for more complex types  */
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next && args->next->next)
 			{
 				EVAL_ARG(args->next); temp_value_arg = eval_value;
@@ -847,6 +877,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "set") /* sets values to other values */
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next && args->next->next)
 			{
 				EVAL_ARG(args->next); temp_value_arg = eval_value;
@@ -860,6 +891,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "array") /* creates an array of arguments */
 		{
+			GOTO_SET(&sts_defaults);
 			VALUE_INIT(ret, STS_ARRAY);
 			ACTION_BEGIN_ARGLOOP
 				STS_ARRAY_APPEND_INSERT(ret, eval_value, i); STS_VALUE_REFINC(script, eval_value); ++i;
@@ -867,6 +899,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "remove") /* removes values at array */
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next && args->next->next)
 			{
 				EVAL_ARG(args->next); temp_value_arg = eval_value;
@@ -883,6 +916,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "insert") /* inserts values at array */
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next && args->next->next && args->next->next->next)
 			{
 				EVAL_ARG(args->next); temp_value_arg = eval_value;
@@ -901,6 +935,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "import") /* import file in the current working directory (NOT WHERE THE SCRIPT IS), if there is no file found, in the system */
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next)
 			{
 				EVAL_ARG(args->next);
@@ -933,6 +968,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "call") /* call function */
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next)
 			{
 				EVAL_ARG(args->next); temp_value_arg = eval_value;
@@ -966,6 +1002,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "&&")
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next && args->next->next)
 			{
 				VALUE_FROM_NUMBER(ret, 1);
@@ -980,6 +1017,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		ACTION(else if, "||")
 		{
+			GOTO_SET(&sts_defaults);
 			if(args->next && args->next->next)
 			{
 				VALUE_FROM_NUMBER(ret, 0);
@@ -994,6 +1032,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		#define ACTION_RELATIONAL(operator) ACTION(else if, #operator)	\
 		{	\
+			GOTO_SET(&sts_defaults);	\
 			if(args->next && args->next->next)	\
 			{	\
 				EVAL_ARG(args->next); temp_value_arg = eval_value;	\
@@ -1037,6 +1076,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		#define ACTION_BINOP_MULTI(operator, single_arg, multi_arg) ACTION(else if, #operator)	\
 		{	\
+			GOTO_SET(&sts_defaults);	\
 			if(args->next && !args->next->next)	\
 			{	\
 				EVAL_ARG(args->next);	\
@@ -1062,6 +1102,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		}
 		#define ACTION_BINOP(operator, single_arg) ACTION_BINOP_MULTI(operator, single_arg, {ret->number operator##= eval_value->number;})
 		#define ACTION_SINGLE_NUMERIC(script, func) ACTION(else if, #func) {	\
+			GOTO_SET(&sts_defaults);	\
 			if(args->next){	\
 				EVAL_ARG(args->next); if(eval_value->type != STS_NUMBER) STS_ERROR_SIMPLE(#func " action requires the first agument to be a number");	\
 				else VALUE_FROM_NUMBER(ret, func(eval_value->number));	\
@@ -1109,6 +1150,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 	} /* end of string comparison for action. Up next is global (local really) function search */
 	if(!ret && action->type == STS_STRING) /* look for functions to call */
 	{
+		GOTO_SET(&sts_defaults);
 		STS_SCOPE_SEARCH(locals, action->string.data, action->string.length, row, {});
 		if(row && ((sts_value_t *)row->value)->type == STS_FUNCTION)
 		{
