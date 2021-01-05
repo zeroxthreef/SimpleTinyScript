@@ -190,7 +190,7 @@ void *sts_memdup(void *src, unsigned int size);
 #ifndef STS_ERROR_PRINT_ARG0
 	#define STS_ERROR_PRINT_ARG0 stderr,
 #endif
-#ifndef STS_ERROR_PRINT_CONCAT
+#ifndef STS_ERROR_CONCAT
 	#define STS_ERROR_CONCAT "\n"
 #endif
 #define STS_ERROR_SIMPLE(str) STS_ERROR_PRINT(STS_ERROR_PRINT_ARG0 str STS_ERROR_CONCAT)
@@ -1362,14 +1362,14 @@ sts_map_row_t *sts_map_add_set(sts_map_row_t **row, void *key, unsigned int key_
 	if(!*row)
 	{
 		STS_HASH(hash, key, key_size);
-		if(!STS_CREATE_ROW(ret)) {STS_ERROR_SIMPLE("could not create new row"); return NULL;}
+		if(!STS_CREATE_ROW(ret)) return NULL;
 		*row = ret;
 		ret->hash = hash;
 	}
 	else if(!(ret = sts_map_get(row, key, key_size)))
 	{
 		STS_HASH(hash, key, key_size);
-		if(!STS_CREATE_ROW(ret)) {STS_ERROR_SIMPLE("could not create new row"); return NULL;}
+		if(!STS_CREATE_ROW(ret)) return NULL;
 		ret->next = *row;
 		*row = ret;
 		ret->hash = hash;

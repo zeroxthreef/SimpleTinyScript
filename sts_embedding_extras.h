@@ -18,15 +18,15 @@ sts_value_t *sts_value_from_string(sts_script_t *script, char *string);
 
 sts_value_t *sts_value_from_number(sts_script_t *script, double num);
 
-void sts_array_resize(sts_value_t *value, unsigned int size);
+void sts_array_resize(sts_script_t *script, sts_value_t *value, unsigned int size);
 
-void sts_array_append_insert(sts_value_t *value_ptr, sts_value_t *value_insert, unsigned int position);
+void sts_array_append_insert(sts_script_t *script, sts_value_t *value_ptr, sts_value_t *value_insert, unsigned int position);
 
 int sts_array_remove(sts_script_t *script, sts_value_t *value_ptr, unsigned int position);
 
 unsigned int sts_hash(void *data, unsigned int size);
 
-void sts_string_assemble(char **dest, unsigned int current_size, char *middle_str, unsigned int middle_size, char *end_str, unsigned int end_size);
+void sts_string_assemble(sts_script_t *script, char **dest, unsigned int current_size, char *middle_str, unsigned int middle_size, char *end_str, unsigned int end_size);
 
 int sts_destroy_map(sts_script_t *script, sts_map_row_t *row);
 
@@ -109,12 +109,12 @@ sts_value_t *sts_value_from_number(sts_script_t *script, double num)
 	return ret;
 }
 
-void sts_array_resize(sts_value_t *value, unsigned int size)
+void sts_array_resize(sts_script_t *script, sts_value_t *value, unsigned int size)
 {
 	STS_ARRAY_RESIZE(value, size);
 }
 
-void sts_array_append_insert(sts_value_t *value_ptr, sts_value_t *value_insert, unsigned int position)
+void sts_array_append_insert(sts_script_t *script, sts_value_t *value_ptr, sts_value_t *value_insert, unsigned int position)
 {
 	STS_ARRAY_APPEND_INSERT(value_ptr, value_insert, position);
 }
@@ -135,7 +135,7 @@ unsigned int sts_hash(void *data, unsigned int size)
 	return ret;
 }
 
-void sts_string_assemble(char **dest, unsigned int current_size, char *middle_str, unsigned int middle_size, char *end_str, unsigned int end_size)
+void sts_string_assemble(sts_script_t *script, char **dest, unsigned int current_size, char *middle_str, unsigned int middle_size, char *end_str, unsigned int end_size)
 {
 	STS_STRING_ASSEMBLE(*dest, current_size, middle_str, middle_size, end_str, end_size);
 }
