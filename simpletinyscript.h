@@ -216,7 +216,7 @@ void *sts_memdup(void *src, unsigned int size);
 #endif
 /* util macros */
 
-#define STS_VALUE_REFINC(script_ptr, value_ptr) do{if(value_ptr->type == STS_EXTERNAL){value_ptr->external.refinc(script_ptr, value_ptr);} value_ptr->references++;}while(0)
+#define STS_VALUE_REFINC(script_ptr, value_ptr) do{value_ptr->references++;}while(0)
 
 #define STS_CREATE_VALUE(value_ptr) (value_ptr = STS_CALLOC(1, sizeof(sts_value_t)))
 
@@ -349,8 +349,7 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 			PARSER_ERROR("could not parse script");
 		container_node->child = temp_expression_node;
 		STS_FREE(expression_node);
-		if(!(name = calloc(1, sizeof(sts_name_container_t))) || sts_ast_apply_name(script, container_node, name)) PARSER_ERROR("could not apply the name container to the ast");
-		name->script_name = sts_memdup(script_name, strlen(script_name));
+		if(!(name = calloc(1, sizeof(sts_name_container_t))) || !(name->script_name = sts_memdup(script_name, strlen(script_name))) || sts_ast_apply_name(script, container_node, name)) PARSER_ERROR("could not apply the name container to the ast");
 		return container_node;
 	}
 	
@@ -528,7 +527,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 	sts_value_t *ret = NULL, *eval_value = NULL, *temp_value_arg = NULL, *temp_value = NULL;
 	#define EVAL_ARG(argument) do{if(!(eval_value = sts_eval(script, argument, locals, previous, 1, 0))){STS_ERROR_SIMPLE("could not eval argument"); } }while(0)
 	#define EVAL_ARG_ALL(argument) do{if(!(eval_value = sts_eval(script, argument, locals, previous, 0, 0))){STS_ERROR_SIMPLE("could not eval argument"); } }while(0)
-	#define VALUE_FROM_NUMBER(value_ptr, set_number) do{if(!(STS_CREATE_VALUE(value_ptr))) STS_ERROR_SIMPLE("could not create value for number"); else{value_ptr->references = 1; value_ptr->type = STS_NUMBER; value_ptr->number = (float)set_number;} }while(0)
+	#define VALUE_FROM_NUMBER(value_ptr, set_number) do{if(!(STS_CREATE_VALUE(value_ptr))) STS_ERROR_SIMPLE("could not create value for number"); else{value_ptr->references = 1; value_ptr->type = STS_NUMBER; value_ptr->number = (double)(set_number);} }while(0)
 	#define VALUE_INIT(value_ptr, set_type) do{if(!(STS_CREATE_VALUE(value_ptr))) STS_ERROR_SIMPLE("could not create and initialize value"); else{value_ptr->references = 1; value_ptr->type = set_type;} }while(0)
 	#define ACTION(test, str) test(strcmp(str, action->string.data) == 0)
 	#define ACTION_BEGIN_ARGLOOP while((args = args->next))	\
