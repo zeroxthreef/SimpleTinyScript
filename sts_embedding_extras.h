@@ -176,4 +176,214 @@ sts_map_row_t *sts_scope_search(sts_script_t *script, sts_scope_t *scope, void *
 	return ret;
 }
 
+int sts_hashmap_set(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned long key_length, sts_value_t *value)
+{
+	/*
+	# hashmap structure:
+	#   [array
+	#       [array *hash* *key string* *value*]
+	#       [array *hash* *key string* *value*]
+	#       ...
+	#   ]
+	*/
+
+	sts_value_t *row_val = NULL, *hash_val = NULL, *key_val = NULL;
+	unsigned long hash = 0;
+
+
+	if(!hashmap || hashmap->type != STS_ARRAY)
+	{
+		STS_ERROR_SIMPLE("hashmap value is null or not array");
+		return 1;
+	}
+
+	if(!key)
+	{
+		STS_ERROR_SIMPLE("key is null");
+		return 1;
+	}
+
+	if(!value)
+	{
+		STS_ERROR_SIMPLE("value value is null");
+		return 1;
+	}
+
+	/* create the parts */
+
+	STS_HASH(hash, key, key_length);
+
+	if(!(hash_val = sts_value_from_number(script, (double)hash)))
+	{
+		STS_ERROR_SIMPLE("could not create hash value from number");
+		return 1;
+	}
+
+
+	if(!(key_val = sts_value_from_nstring(script, key, key_length)))
+	{
+		STS_ERROR_SIMPLE("could not create string value from key str");
+		return 1;
+	}
+
+	/* create the row */
+
+	if(!(row_val = sts_value_create(script, STS_ARRAY)))
+	{
+		STS_ERROR_SIMPLE("could not create row for hashmap");
+		return 1;
+	}
+
+	sts_array_append_insert(script, row_val, hash_val, 0);
+	sts_array_append_insert(script, row_val, key_val, 1);
+	sts_array_append_insert(script, row_val, value, 2);
+
+	/* add the row */
+
+	sts_array_append_insert(script, hashmap, row_val, hashmap->array.length);
+
+
+
+	return 0;
+}
+
+int sts_hashmap_del(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned long key_length)
+{
+	/*
+	# hashmap structure:
+	#   [array
+	#       [array *hash* *key string* *value*]
+	#       [array *hash* *key string* *value*]
+	#       ...
+	#   ]
+	*/
+
+	sts_value_t *row = NULL;
+	unsigned long i, hash = 0;
+	double converted_hash;
+
+
+	STS_HASH(hash, key, key_length);
+
+	converted_hash = (double)hash;
+
+
+	if(!hashmap || hashmap->type != STS_ARRAY)
+	{
+		STS_ERROR_SIMPLE("hashmap value is null or not array");
+		return 1;
+	}
+
+	if(!key)
+	{
+		STS_ERROR_SIMPLE("key is null");
+		return 1;
+	}
+
+
+	for(i = 0; i < hashmap->array.length; ++i)
+	{
+		if(hashmap->array.data[i]->type != STS_ARRAY && !hashmap->array.data[i]->array.length)
+		{
+			STS_ERROR_SIMPLE("invalid row in hashmap");
+			return 1;
+		}
+
+		if(hashmap->array.data[i]->array.data[0]->type != STS_NUMBER)
+		{
+			STS_ERROR_SIMPLE("invalid row hash index in hashmap");
+			return 1;
+		}
+
+		if(hashmap->array.data[i]->array.data[0]->type != STS_NUMBER)
+		{
+			STS_ERROR_SIMPLE("invalid row hash index in hashmap");
+			return 1;
+		}
+
+		if(hashmap->array.data[i]->array.data[0]->number == converted_hash)
+		{
+			row = hashmap->array.data[i];
+
+			/* remove the pointer from the array */
+			sts_array_remove(script, hashmap, i);
+
+			/* refdec the row */
+			if(!sts_value_reference_decrement(script, row))
+			{
+				STS_ERROR_SIMPLE("could not refdec row in hashmap");
+				return 1;
+			}
+		}
+	}
+
+
+	return 0;
+}
+
+sts_value_t *sts_hashmap_get(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned long key_length)
+{
+	/*
+	# hashmap structure:
+	#   [array
+	#       [array *hash* *key string* *value*]
+	#       [array *hash* *key string* *value*]
+	#       ...
+	#   ]
+	*/
+
+	sts_value_t *row = NULL, *ret = NULL;
+	unsigned long i, hash = 0;
+	double converted_hash;
+
+
+	STS_HASH(hash, key, key_length);
+
+	converted_hash = (double)hash;
+
+
+	if(!hashmap || hashmap->type != STS_ARRAY)
+	{
+		STS_ERROR_SIMPLE("hashmap value is null or not array");
+		return ret;
+	}
+
+	if(!key)
+	{
+		STS_ERROR_SIMPLE("key is null");
+		return ret;
+	}
+
+
+	for(i = 0; i < hashmap->array.length; ++i)
+	{
+		if(hashmap->array.data[i]->type != STS_ARRAY && !hashmap->array.data[i]->array.length)
+		{
+			STS_ERROR_SIMPLE("invalid row in hashmap");
+			return ret;
+		}
+
+		if(hashmap->array.data[i]->array.data[0]->type != STS_NUMBER)
+		{
+			STS_ERROR_SIMPLE("invalid row hash index in hashmap");
+			return ret;
+		}
+
+		if(hashmap->array.data[i]->array.data[0]->type != STS_NUMBER)
+		{
+			STS_ERROR_SIMPLE("invalid row hash index in hashmap");
+			return ret;
+		}
+
+		if(hashmap->array.data[i]->array.data[0]->number == converted_hash)
+		{
+			ret = hashmap->array.data[i];
+			break;
+		}
+	}
+
+
+	return ret;
+}
+
 #endif

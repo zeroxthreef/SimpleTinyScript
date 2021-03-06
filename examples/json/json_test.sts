@@ -1,0 +1,14 @@
+import stdlib.sts
+
+local json_data (file-read [string (getpwd (self-name)) "test.json"])
+
+print json, from [string (getpwd (self-name)) "test.json"], text: $json_data
+
+
+local json_value [json $json_data]
+
+print (string-value-print $json_value)
+
+print ================= converting back into prettified text
+
+print (json $json_value 1)

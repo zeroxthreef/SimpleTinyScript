@@ -21,6 +21,10 @@ loop(< $i 10) {
 
 `./sts file.sts` to eval a script
 
+## Libraries Used
+The core of sts lives in ``simpletinyscript.h`` which only depends on the C standard library. However, ``cli.c`` depends on system libraries and on the following public domain libraries which exist in ``ext/``:
+* [pdjson](https://github.com/skeeto/pdjson)
+
 ## Documentation
 
 **print ...**<br />

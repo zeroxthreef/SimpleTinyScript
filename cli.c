@@ -6,6 +6,9 @@ it is much nicer to use with these */
 #define STS_EMBEDDING_EXTRAS_IMPLEMENTATION
 #include "sts_embedding_extras.h"
 
+/* external public domain libs */
+#include "ext/pdjson/pdjson.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -72,6 +75,25 @@ void debug_ast(sts_node_t *node, int level)
 	}
 }
 
+int amemcat(char **dest, unsigned long *dest_len, char *src, unsigned long src_len)
+{
+	char *temp = NULL;
+
+
+	if(!dest || !dest_len) return 1;
+
+	if(!(temp = realloc(*dest, *dest_len + src_len + 1)))
+		return 1;
+	
+	memcpy(&temp[*dest_len], src, src_len);
+	temp[*dest_len + src_len] = 0;
+
+	*dest = temp;
+	*dest_len += src_len;
+
+	return 0;
+}
+
 int equal_open_close(char *input)
 {
 	unsigned int i = 0, open = 0, close = 0, instring = 0;
@@ -101,6 +123,339 @@ int equal_open_close(char *input)
 	}
 
 	return (open == close);
+}
+
+/* TODO: maybe dont make this recursive */
+sts_value_t *sts_value_from_json(sts_script_t *script, json_stream *json, char *json_str, unsigned long length)
+{
+	sts_value_t *ret = NULL, *temp = NULL, *temp_container = NULL;
+	json_stream new_json;
+	unsigned long i = 0, str_length = 0, init_json = 0;
+	char *str = NULL;
+	int type;
+	
+
+	/* initialize stream */
+	if(!json)
+	{
+		json_open_string(&new_json, json_str);
+		json = &new_json;
+		init_json = 1;
+	}
+
+	type = json_next(json);
+
+	switch(type)
+	{
+		case JSON_NULL:
+			if(!(ret = sts_value_create(script, STS_NIL)))
+			{
+				fprintf(stderr, "could not create nil value\n");
+				return NULL;
+			}
+
+			return ret;
+		break;
+		case JSON_TRUE:
+			if(!(ret = sts_value_from_number(script, 1.0)))
+			{
+				fprintf(stderr, "could not create true value\n");
+				return NULL;
+			}
+
+			return ret;
+		break;
+		case JSON_FALSE:
+			if(!(ret = sts_value_from_number(script, 0.0)))
+			{
+				fprintf(stderr, "could not create false value\n");
+				return NULL;
+			}
+
+			return ret;
+		break;
+		case JSON_NUMBER:
+			if(!(ret = sts_value_from_number(script, json_get_number(json))))
+			{
+				fprintf(stderr, "could not create true value\n");
+				return NULL;
+			}
+
+			return ret;
+		break;
+		case JSON_STRING:
+			str = json_get_string(json, &str_length);
+
+			/* NOTE: pdjson likes to include \0 in the string length. No idea why */
+			if(!(ret = sts_value_from_nstring(script, str, str_length - 1)))
+			{
+				fprintf(stderr, "could not create true value");
+				return NULL;
+			}
+
+			return ret;
+		break;
+		case JSON_ARRAY:
+			if(!(ret = sts_value_create(script, STS_ARRAY)))
+			{
+				fprintf(stderr, "could not create array value\n");
+				return NULL;
+			}
+
+			while((type = json_peek(json)) != JSON_DONE && type != JSON_ERROR && type != JSON_ARRAY_END)
+			{
+				if(!(temp = sts_value_from_json(script, json, json_str, length)))
+				{
+					fprintf(stderr, "could not add member to array\n");
+					sts_value_reference_decrement(script, ret);
+					return NULL;
+				}
+
+				STS_ARRAY_APPEND_INSERT(ret, temp, i);
+				++i;
+			}
+
+			json_next(json);
+		break;
+		case JSON_OBJECT:
+			if(!(ret = sts_value_create(script, STS_ARRAY)))
+			{
+				fprintf(stderr, "could not create hashmap array value\n");
+				return NULL;
+			}
+
+			while((type = json_peek(json)) != JSON_DONE && type != JSON_ERROR && type != JSON_OBJECT_END)
+			{
+				/* create the key */
+
+				/* NOTE: this would be more compact but gcc has really weird behavior. Works perfectly fine on clang */
+				str = json_get_string(json, &str_length);
+				str = sts_memdup(str, str_length);
+
+				json_next(json);
+
+				if(!(temp = sts_value_from_json(script, json, json_str, length)))
+				{
+					fprintf(stderr, "could not add member to object\n");
+					sts_value_reference_decrement(script, ret);
+					free(str);
+					return NULL;
+				}
+
+				if(sts_hashmap_set(script, ret, str, str_length, temp))
+				{
+					fprintf(stderr, "could not add '%.*s' to hashmap\n", str_length, str);
+					sts_value_reference_decrement(script, ret);
+					free(str);
+					return NULL;
+				}
+
+				free(str);
+			}
+
+			json_next(json);
+		break;
+		case JSON_ERROR:
+			fprintf(stderr, "json parse error on line %ld: '%s'\n", json_get_lineno(json), json_get_error(json));
+			return NULL;
+		break;
+	}
+
+	if(init_json)
+		json_close(json);
+
+
+	return ret;
+}
+
+int sts_hashmap_verify(sts_script_t *script, sts_value_t *value)
+{
+	unsigned long i;
+
+	/* hashmaps are only a concept of the stdlib itself so we can only guess if its actually a hashmap */
+	if(value->type == STS_ARRAY && 
+		value->array.length && 
+		value->array.data[0]->type == STS_ARRAY && 
+		value->array.data[0]->array.length == 3
+	)
+	{
+		for(i = 0; i < value->array.length; ++i)
+		{
+			/* verify first hash number, then key string, and that every row has 3 values */
+
+			if(value->array.data[i]->type != STS_ARRAY || 
+				value->array.data[i]->array.length != 3 ||
+				value->array.data[i]->array.data[0]->type != STS_NUMBER ||
+				value->array.data[i]->array.data[1]->type != STS_STRING
+			)
+			{
+				return 0;
+			}
+
+			/* TODO: determine if its worth it to hash every string and see if the number is true */
+		}
+
+		return 1;
+	}
+
+	return 0;
+}
+
+char *escape_string(char *str, unsigned long str_len, unsigned long *out_len)
+{
+	char *ret = NULL;
+	unsigned long i;
+
+	#define ESCAPE_WITH(offset, as) do{	\
+			if(!(ret = realloc(ret, *out_len + strlen(as) + 1)))	\
+			{	\
+				fprintf(stderr, "could not resize escaped string\n");	\
+				return NULL;	\
+			}	\
+			memmove(&ret[i + strlen(as)], &ret[i + 1], (*out_len + 1) - (i + 1));	\
+			memcpy(&ret[i], as, strlen(as));	\
+			*out_len += strlen(as) - 1;	\
+			i += strlen(as) - 1;	\
+		}while(0)
+
+
+	if(!(ret = sts_memdup(str, str_len)))
+	{
+		fprintf(stderr, "could not duplicate string\n");
+		return NULL;
+	}
+
+	/* initialize out length */
+	*out_len = str_len;
+
+
+	for(i = 0; i < *out_len; ++i)
+	{
+		switch(ret[i])
+		{
+			case '\"':
+				ESCAPE_WITH(i, "\\\"");
+			break;
+			case '\\':
+				ESCAPE_WITH(i, "\\\\");
+			break;
+			case '\b':
+				ESCAPE_WITH(i, "\\b");
+			break;
+			case '\t':
+				ESCAPE_WITH(i, "\\t");
+			break;
+			case '\n':
+				ESCAPE_WITH(i, "\\n");
+			break;
+			case '\r':
+				ESCAPE_WITH(i, "\\r");
+			break;
+			case '\f':
+				ESCAPE_WITH(i, "\\f");
+			break;
+			case '/':
+				ESCAPE_WITH(i, "\\/");
+			break;
+		}
+	}
+
+	return ret;
+
+	#undef ESCAPE_WITH
+}
+
+int sts_json_from_value(sts_script_t *script, char **str_buf, sts_value_t *value, int pretty, int depth, unsigned long *len)
+{
+	char num_buf[512], *temp_str = NULL;
+	unsigned long temp_len = 0, i;
+
+
+	#define STS_JSON_ERR(msg) do{ fprintf(stderr, "could not concat data onto json string%s%s\n", msg ? ": " : "", msg ? msg : ""); goto error;} while(0)
+	#define STS_JSON_EMIT_INDENT(n) do{ unsigned long i; for(i = 0; i < (n); ++i){ if(amemcat(str_buf, len, "\t", 1)) STS_JSON_ERR("indent mem error"); } }while(0)
+	#define STS_JSON_EMIT(n_depth, str, str_len) do{ if(pretty) STS_JSON_EMIT_INDENT(n_depth); if(amemcat(str_buf, len, (str), (str_len))) STS_JSON_ERR("mem error"); }while(0)
+	#define STS_JSON_EMIT_ALONE(str, str_len) do{ if(amemcat(str_buf, len, (str), (str_len))) STS_JSON_ERR("mem error"); }while(0)
+	#define STS_JSON_ENDLINE do{ if(pretty) STS_JSON_EMIT_ALONE("\n", 1); }while(0)
+
+
+	if(!value) STS_JSON_ERR("value is null in json string convert\n");
+
+	switch(value->type)
+	{
+		case STS_NIL:
+			STS_JSON_EMIT_ALONE("null", 4);
+		break;
+		case STS_NUMBER:
+			temp_len = snprintf(num_buf, 512, "%g", value->number);
+			STS_JSON_EMIT_ALONE(num_buf, temp_len);
+		break;
+		case STS_STRING:
+			STS_JSON_EMIT_ALONE("\"", 1);
+			if(!(temp_str = escape_string(value->string.data, value->string.length, &temp_len)))
+				STS_JSON_ERR("could not escape string");
+			STS_JSON_EMIT_ALONE(temp_str, temp_len);
+			STS_JSON_EMIT_ALONE("\"", 1);
+			free(temp_str);
+		break;
+		case STS_FUNCTION:
+			/* TODO: print stringified function? */
+			STS_JSON_EMIT_ALONE("null", 4);
+		break;
+		case STS_ARRAY:
+			/* its an object */
+			if(sts_hashmap_verify(script, value))
+			{
+				STS_JSON_EMIT_ALONE("{", 1); STS_JSON_ENDLINE;
+
+				for(i = 0; i < value->array.length; ++i)
+				{
+					STS_JSON_EMIT(depth + 1, "\"", 1);
+					if(!(temp_str = escape_string(value->array.data[i]->array.data[1]->string.data, value->array.data[i]->array.data[1]->string.length, &temp_len)))
+						STS_JSON_ERR("could not escape string");
+					STS_JSON_EMIT_ALONE(temp_str, temp_len);
+					STS_JSON_EMIT_ALONE("\": ", 3);
+
+					if(sts_json_from_value(script, str_buf, value->array.data[i]->array.data[2], pretty, depth + 1, len))
+						STS_JSON_ERR("could not generate json string for array in object\n");
+
+					if(i != value->array.length - 1)
+						STS_JSON_EMIT_ALONE(",", 1);
+					STS_JSON_ENDLINE;
+					free(temp_str);
+				}
+
+				STS_JSON_EMIT(depth, "}", 1);
+			}
+			/* its an array */
+			else
+			{
+				STS_JSON_EMIT_ALONE("[", 1);
+
+				for(i = 0; i < value->array.length; ++i)
+				{
+					if(sts_json_from_value(script, str_buf, value->array.data[i], pretty, depth + 1, len))
+						STS_JSON_ERR("could not generate json string for array in array\n");
+
+					if(i != value->array.length - 1)
+						STS_JSON_EMIT_ALONE(",", 1);
+				}
+
+				STS_JSON_EMIT_ALONE("]", 1);
+			}
+		break;
+	}
+	
+
+	return 0;
+error:
+	if(temp_str) free(temp_str);
+	return 1;
+
+	#undef STS_JSON_ERR
+	#undef STS_JSON_EMIT_INDENT
+	#undef STS_JSON_EMIT
+	#undef STS_JSON_EMIT_ALONE
+	#undef STS_JSON_ENDLINE
 }
 
 /* control simple tiny script */
@@ -231,6 +586,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 	FILE *proc_pipe = NULL, *file = NULL;
 	char *temp_str = NULL, *popen_buf = NULL, buf[1024];
 	unsigned int i = 0, size = 0, total = 0, temp_uint = 0;
+	unsigned long temp_ulong = 0;
 
 
 	if(action->type == STS_STRING)
@@ -572,6 +928,69 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in sleep action");
 			}
 			else {STS_ERROR_SIMPLE("sleep action requires a single number argument"); return NULL;}
+		}
+		ACTION(else if, "json") /* parses json into sts values or outputs a stringified version */
+		{
+			/* parsing from string */
+			if(args->next && !args->next->next)
+			{
+				EVAL_ARG(args->next);
+				if(eval_value->type != STS_STRING )
+				{
+					fprintf(stderr, "the json action, if passed one argument, requires a string\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the json action");
+					return NULL;
+				}
+
+				if(!(ret = sts_value_from_json(script, NULL, eval_value->string.data, eval_value->string.length)))
+				{
+					STS_ERROR_SIMPLE("could not parse json into value");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the json action");
+					return NULL;
+				}
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in json action");
+			}
+			else if(args->next && args->next->next)
+			{
+				EVAL_ARG(args->next);
+				first_arg_value = eval_value;
+				EVAL_ARG(args->next->next);
+
+				if(eval_value->type != STS_NUMBER)
+				{
+					fprintf(stderr, "the json action, if passed two arguments, requires the second to be a number (boolean)\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the json action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the json action");
+					return NULL;
+				}
+
+				if(sts_json_from_value(script, &temp_str, first_arg_value, eval_value->number, 0, &temp_ulong))
+				{
+					STS_ERROR_SIMPLE("could not create json string from value");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the json action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the json action");
+					return NULL;
+				}
+
+
+				if(!(ret = sts_value_create(script, STS_STRING)))
+				{
+					STS_ERROR_SIMPLE("could not create sts string for json string");
+					free(temp_str);
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the json action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the json action");
+					return NULL;
+				}
+
+				/* dont duplicate the string just created with nstring */
+				ret->string.data = temp_str;
+				ret->string.length = temp_ulong;
+
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the json action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the json action");
+			}
+			else {STS_ERROR_SIMPLE("json action requires either single string or any value and a number for pretty printing"); return NULL;}
 		}
 
 		/* end of sts_string action type */
