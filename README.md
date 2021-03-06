@@ -149,6 +149,9 @@ sets the environment variable to the value if found or makes a new variable of t
 **sleep seconds**<br />
 sleeps for the number of seconds provided in 'seconds'
 
+**json string_data|any_value (prettify)**<br />
+if supplying a single string argument, it will parse the string. Two arguments with a number is json from value conversion. ``$prettify`` as 1 will make the output look nice. 0 will make the output compact
+
 The following functions are documentation for ``stdlib.sts``
 ---
 
