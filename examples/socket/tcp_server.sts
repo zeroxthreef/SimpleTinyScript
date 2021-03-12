@@ -1,0 +1,30 @@
+import stdlib.sts
+
+local sock (socket-tcp 5000 0 1) #make a blocking socket that listens on port 5000
+
+if(== $sock $nil) {
+	print could not open socket in server
+}
+else {
+	local client_sock $nil
+
+	if(socket-tcp-accept $sock $client_sock) {
+		print could not accept socket
+	}
+
+	local break 0
+
+	loop(! $break) {
+		local data (socket-tcp-recv $client_sock)
+
+		if(!= [typeof $data] [STS_STRING]) {
+			print socket error
+			set $break 1
+		}
+		else {
+			print recieved data: $data
+			# echo that back
+			socket-tcp-send $client_sock [string "=============================================\n\n" $data]
+		}
+	}
+}

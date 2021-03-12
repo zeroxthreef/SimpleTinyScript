@@ -21,9 +21,24 @@ loop(< $i 10) {
 
 `./sts file.sts` to eval a script
 
+## Configuration Definitions
+```
+#define STS_GOTO_JIT //enable the goto jit which requires a gcc extension
+
+#define CLI_ALLOW_SYSTEM //allow the system() shell function to be used in last resort
+
+#define INSTALL_DIR "/path/to/install" //change the install directory so imports work in cli.c
+
+#define CLI_NO_SOCKETS //remove the ability to use sockets
+
+#define CLI_NO_TLS //remove the ability to have tls sockets. Will already be in effect if there are no sockets
+```
+
 ## Libraries Used
 The core of sts lives in ``simpletinyscript.h`` which only depends on the C standard library. However, ``cli.c`` depends on system libraries and on the following public domain libraries which exist in ``ext/``:
 * [pdjson](https://github.com/skeeto/pdjson)
+* [zed_net](https://github.com/mackron/zed_net)
+* [nuTLS](https://github.com/turbo/nuTLS)
 
 ## Documentation
 
@@ -151,6 +166,27 @@ sleeps for the number of seconds provided in 'seconds'
 
 **json string_data|any_value (prettify)**<br />
 if supplying a single string argument, it will parse the string. Two arguments with a number is json from value conversion. ``$prettify`` as 1 will make the output look nice. 0 will make the output compact
+
+**socket-tcp port non_blocking listening**<br />
+creates a tcp socket, and if creating a server socket, set listening to 1
+
+**socket-udp port non_blocking**<br />
+creates a udp socket
+
+**socket-tcp-connect socket host port**<br />
+connect to a tcp server with the supplied arguments. Returns 1 if the address is unknown, 2 if the host didnt connect, and 0 if successful
+
+**socket-tcp-send socket data**<br />
+sends string buffer to host. Returns the amount of sent bytes or -1 on error
+
+**socket-tcp-recv socket**<br />
+returns a string buffer if successful, -1 on error, or 1 if the socket would block on a nonblocking port
+
+**socket-tcp-would-block socket**<br />
+returns 1 if the socket would block
+
+**socket-tcp-accept socket out_client_socket_reference**<br />
+the out_socket_client_reference value will be set to the client socket (similar to pipeout) and returns 0 upon success, 1 upon would block, -1 upon error, and 2 upon the socket not able to listen
 
 The following functions are documentation for ``stdlib.sts``
 ---

@@ -1,0 +1,16 @@
+import stdlib.sts
+
+local sock (socket-tcp 0 0 0) #make a blocking socket
+
+if(== $sock $nil) {
+	print could not open socket in client
+}
+else {
+	if(socket-tcp-connect $sock "localhost" 8080) {
+		print could not connect to host
+	}
+
+	socket-tcp-send $sock "GET / HTTP/1.0\r\n\r\n"
+
+	print cool, the host replied (socket-tcp-recv $sock)
+}

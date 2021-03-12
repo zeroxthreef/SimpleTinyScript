@@ -9,6 +9,17 @@ it is much nicer to use with these */
 /* external public domain libs */
 #include "ext/pdjson/pdjson.h"
 
+#ifndef CLI_NO_SOCKETS
+
+#define ZED_NET_IMPLEMENTATION
+#include "ext/zed_net/zed_net.h"
+
+#ifndef CLI_NO_TLS
+#include "ext/nuTLS/nutls.c"
+#endif /* CLI_NO_TLS */
+
+#endif /* CLI_NO_SOCKETS */
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -23,6 +34,60 @@ it is much nicer to use with these */
 #ifndef INSTALL_DIR
 	#define INSTALL_DIR "/usr/local/bin/"
 #endif
+
+typedef struct
+{
+	unsigned long references;
+	zed_net_socket_t socket;
+} cli_socket_t;
+
+#define CLI_SOCKET(value) ((cli_socket_t *)value->external.data_ptr)
+#define IS_CLI_SOCKET(value) (value->type == STS_EXTERNAL && value->external.refdec == &cli_socket_refdec)
+
+int cli_socket_refdec(sts_script_t *script, sts_value_t *value)
+{
+	if(IS_CLI_SOCKET(value) && (!CLI_SOCKET(value)->references || !--CLI_SOCKET(value)->references))
+	{
+		zed_net_socket_close(&CLI_SOCKET(value)->socket);
+		free(value->external.data_ptr);
+	}
+
+	return 0;
+}
+
+void cli_socket_refinc(sts_script_t *script, sts_value_t *value)
+{
+	if(IS_CLI_SOCKET(value))
+		CLI_SOCKET(value)->references++;
+}
+
+sts_value_t *cli_socket_new(sts_script_t *script)
+{
+	sts_value_t *ret = NULL;
+
+
+	if(!(ret = sts_value_create(script, STS_EXTERNAL)))
+	{
+		STS_ERROR_SIMPLE("could not create socket external value");
+		goto error;
+	}
+
+	ret->external.refdec = &cli_socket_refdec;
+	ret->external.refinc = &cli_socket_refinc;
+
+	if(!(ret->external.data_ptr = calloc(1, sizeof(cli_socket_t))))
+	{
+		STS_ERROR_SIMPLE("could not create socket type value");
+		goto error;
+	}
+
+	CLI_SOCKET(ret)->references = 1;
+
+	return ret;
+error:
+	if(ret) free(ret);
+	return NULL;
+}
 
 void debug_ast(sts_node_t *node, int level)
 {
@@ -584,15 +649,19 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 {
 	sts_value_t *ret = NULL, *eval_value = NULL, *temp_value = NULL, *first_arg_value = NULL, *second_arg_value = NULL;
 	FILE *proc_pipe = NULL, *file = NULL;
+	zed_net_address_t address;
 	char *temp_str = NULL, *popen_buf = NULL, buf[1024];
 	unsigned int i = 0, size = 0, total = 0, temp_uint = 0;
 	unsigned long temp_ulong = 0;
+	int temp_int = 0;
 
 
+	GOTO_JMP(&cli_actions);
 	if(action->type == STS_STRING)
 	{
 		ACTION(if, "pipeout")
 		{
+			GOTO_SET(&cli_actions);
 			/* the first arg is the string that comes from stdout and
 			the remaining arguments are the command part */
 			
@@ -611,7 +680,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 
 			if((proc_pipe = popen(temp_str, "r")))
 			{
-				while((size = fread(buf, 1, 1024, proc_pipe)) > 0)
+				while((size = fread(buf, 1, sizeof(buf), proc_pipe)) > 0)
 				{
 					if(!(popen_buf = realloc(popen_buf, total + size + 1)))
 					{
@@ -655,6 +724,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		}
 		ACTION(else if, "file-read") /* reads files into a string */
 		{
+			GOTO_SET(&cli_actions);
 			if(args->next)
 			{
 				EVAL_ARG(args->next);
@@ -701,6 +771,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		}
 		ACTION(else if, "file-write") /* writes a string to a file */
 		{
+			GOTO_SET(&cli_actions);
 			if(args->next && args->next->next)
 			{
 				EVAL_ARG(args->next); first_arg_value = eval_value;
@@ -731,6 +802,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		}
 		ACTION(else if, "file-append") /* appends a string to a file */
 		{
+			GOTO_SET(&cli_actions);
 			if(args->next && args->next->next)
 			{
 				EVAL_ARG(args->next); first_arg_value = eval_value;
@@ -761,6 +833,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		}
 		ACTION(else if, "stdin-read") /* if <=0, it reads until eof. If >0, it will read at least that many characters */
 		{
+			GOTO_SET(&cli_actions);
 			if(args->next)
 			{
 				EVAL_ARG(args->next);
@@ -773,7 +846,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 
 				if(eval_value->type == STS_NUMBER)
 				{
-					while((size = fread(buf, 1, ((unsigned int)eval_value->number <= 0) ? 1024 : (unsigned int)eval_value->number, stdin)) > 0)
+					while((size = fread(buf, 1, ((unsigned int)eval_value->number <= 0) ? sizeof(buf) : (unsigned int)eval_value->number, stdin)) > 0)
 					{
 						if(!(temp_str = realloc(temp_str, total + size + 1)))
 						{
@@ -822,6 +895,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		}
 		ACTION(else if, "stdout-write") /* writes raw strings to stdout */
 		{
+			GOTO_SET(&cli_actions);
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
@@ -840,6 +914,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		}
 		ACTION(else if, "stderr-write") /* writes raw strings to stderr */
 		{
+			GOTO_SET(&cli_actions);
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
@@ -858,6 +933,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		}
 		ACTION(else if, "getenv") /* gets a string from the system shell environment */
 		{
+			GOTO_SET(&cli_actions);
 			if(args->next)
 			{
 				EVAL_ARG(args->next);
@@ -890,6 +966,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		}
 		ACTION(else if, "setenv") /* write a new or overwrite old env variable */
 		{
+			GOTO_SET(&cli_actions);
 			if(args->next && args->next->next)
 			{
 				EVAL_ARG(args->next); first_arg_value = eval_value;
@@ -912,6 +989,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		}
 		ACTION(else if, "sleep") /* sleeps for the number of seconds provided */
 		{
+			GOTO_SET(&cli_actions);
 			if(args->next)
 			{
 				EVAL_ARG(args->next);
@@ -931,6 +1009,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		}
 		ACTION(else if, "json") /* parses json into sts values or outputs a stringified version */
 		{
+			GOTO_SET(&cli_actions);
 			/* parsing from string */
 			if(args->next && !args->next->next)
 			{
@@ -992,6 +1071,346 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			}
 			else {STS_ERROR_SIMPLE("json action requires either single string or any value and a number for pretty printing"); return NULL;}
 		}
+		#ifndef CLI_NO_SOCKETS
+		ACTION(else if, "socket-tcp") /* creates new tcp socket. args are (port, non_blocking, listening) */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next && args->next->next && args->next->next->next)
+			{
+				EVAL_ARG(args->next);
+				first_arg_value = eval_value;
+				EVAL_ARG(args->next->next);
+				second_arg_value = eval_value;
+				EVAL_ARG(args->next->next->next);
+
+				if(first_arg_value->type != STS_NUMBER || second_arg_value->type != STS_NUMBER || eval_value->type != STS_NUMBER)
+				{
+					fprintf(stderr, "the socket-tcp action requires 3 number arguments\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the third argument in the socket-tcp action");
+					return NULL;
+				}
+
+				if(!(ret = cli_socket_new(script)))
+				{
+					STS_ERROR_SIMPLE("could not create return socket-tcp");
+
+					/* return nil */
+
+					if(!(ret = sts_value_create(script, STS_NIL)))
+						STS_ERROR_SIMPLE("could not create nil socket in socket-tcp");
+					
+
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the third argument in the socket-tcp action");
+					return ret;
+				}
+
+				if(zed_net_tcp_socket_open(&CLI_SOCKET(ret)->socket, first_arg_value->number, second_arg_value->number, eval_value->number))
+				{
+					STS_ERROR_SIMPLE("could not open socket");
+
+					/* return nil */
+
+					if(!sts_value_reference_decrement(ret, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the old ret in the socket-tcp action");
+
+					if(!(ret = sts_value_create(script, STS_NIL)))
+						STS_ERROR_SIMPLE("could not create nil socket in socket-tcp");
+					
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the third argument in the socket-tcp action");
+					return ret;
+				}
+
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp action");
+				if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the third argument in the socket-tcp action");
+			}
+			else {STS_ERROR_SIMPLE("socket-tcp action requires 3 arguments"); return NULL;}
+		}
+		ACTION(else if, "socket-udp") /* creates new udp socket. args are (port, non_blocking) */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next && args->next->next && args->next->next->next)
+			{
+				EVAL_ARG(args->next);
+				first_arg_value = eval_value;
+				EVAL_ARG(args->next->next);
+				second_arg_value = eval_value;
+
+				if(first_arg_value->type != STS_NUMBER || second_arg_value->type != STS_NUMBER)
+				{
+					fprintf(stderr, "the socket-udp action requires 3 number arguments\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-udp action");
+					return NULL;
+				}
+
+				if(!(ret = cli_socket_new(script)))
+				{
+					STS_ERROR_SIMPLE("could not create return socket-udp");
+
+					/* return nil */
+
+					if(!(ret = sts_value_create(script, STS_NIL)))
+						STS_ERROR_SIMPLE("could not create nil socket in socket-tcp");
+
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-udp action");
+					return ret;
+				}
+
+				if(zed_net_udp_socket_open(&CLI_SOCKET(ret)->socket, first_arg_value->number, second_arg_value->number))
+				{
+					STS_ERROR_SIMPLE("could not open socket");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-udp action");
+					return NULL;
+				}
+
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp action");
+				if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-udp action");
+			}
+			else {STS_ERROR_SIMPLE("socket-udp action requires 3 arguments"); return NULL;}
+		}
+		ACTION(else if, "socket-tcp-connect") /* connects to tcp server (socket, host, port) */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next && args->next->next && args->next->next->next)
+			{
+				EVAL_ARG(args->next);
+				first_arg_value = eval_value;
+				EVAL_ARG(args->next->next);
+				second_arg_value = eval_value;
+				EVAL_ARG(args->next->next->next);
+
+				if(!IS_CLI_SOCKET(first_arg_value) || second_arg_value->type != STS_STRING || eval_value->type != STS_NUMBER)
+				{
+					fprintf(stderr, "the socket-tcp-connect action requires a socket, astring argument for the address, and a number argument for the port\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-connect action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp-connect action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the third argument in the socket-tcp-connect action");
+					return NULL;
+				}
+				
+				temp_uint = 0;
+
+				if(zed_net_get_address(&address, second_arg_value->string.data, eval_value->number))
+				{
+					fprintf(stderr, "could not get the address in socket-tcp-connect: %s\n", zed_net_get_error());
+					temp_uint = 1;
+				}
+				else if(zed_net_tcp_connect(&CLI_SOCKET(first_arg_value)->socket, address))
+				{
+					fprintf(stderr, "could not connect to host in socket-tcp-connect: %s\n", zed_net_get_error());
+					temp_uint = 2;
+				}
+
+				VALUE_FROM_NUMBER(ret, temp_uint);
+
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-connect action");
+				if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-connect action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the third argument in the socket-tcp-connect action");
+			}
+			else {STS_ERROR_SIMPLE("socket-tcp-connect action requires 4 arguments"); return NULL;}
+		}
+		ACTION(else if, "socket-tcp-send") /* sends a string buffer to the host in the socket (socket, data) */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next && args->next->next)
+			{
+				EVAL_ARG(args->next);
+				first_arg_value = eval_value;
+				EVAL_ARG(args->next->next);
+
+				if(!IS_CLI_SOCKET(first_arg_value) || eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "the socket-tcp-send action requires a socket and the data to send\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-send action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp-send action");
+					return NULL;
+				}
+
+				VALUE_FROM_NUMBER(ret, zed_net_tcp_socket_send(&CLI_SOCKET(first_arg_value)->socket, eval_value->string.data, eval_value->string.length));
+
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-send action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp-send action");
+			}
+			else {STS_ERROR_SIMPLE("socket-tcp-send action requires a socket and a data string"); return NULL;}
+		}
+		ACTION(else if, "socket-tcp-recv") /* returns a string of data from the socket. ret of 1 means would block, -1 means error, string is data */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+
+				if(!IS_CLI_SOCKET(eval_value))
+				{
+					fprintf(stderr, "the socket-tcp-recv action requires a socket and the data to send\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-recv action");
+					return NULL;
+				}
+
+				/* first check if it would block and return a 1 instead of a string */
+
+				if(zed_net_check_would_block(&CLI_SOCKET(eval_value)->socket) == 1)
+				{
+					if(!(ret = sts_value_from_number(script, 1)))
+					{
+						STS_ERROR_SIMPLE("could not create number retval in socket-tcp-recv");
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-recv action");
+						return NULL;
+					}
+
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-recv action");
+
+					return ret;
+				}
+
+				do
+				{
+					if(zed_net_check_would_block(&CLI_SOCKET(eval_value)->socket))
+						break;
+
+					temp_int = zed_net_tcp_socket_receive(&CLI_SOCKET(eval_value)->socket, buf, sizeof(buf));
+					
+					if(temp_int <= 0)
+					 break;
+
+					/* this is bad, but this whole project is for personal use primarily */
+					if(!(temp_str = realloc(temp_str, temp_ulong + temp_int)))
+					{
+						STS_ERROR_SIMPLE("could not resize temporary buffer in socket-tcp-recv");
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-recv action");
+						return NULL;
+					}
+
+					memcpy(&temp_str[temp_ulong], buf, temp_int);
+
+					temp_ulong += temp_int;
+				} while(temp_int == sizeof(buf));
+
+
+				/* return a number instead of a string */
+				if(temp_int == -1)
+				{
+					if(!(ret = sts_value_from_number(script, -1)))
+					{
+						STS_ERROR_SIMPLE("could not create number retval in socket-tcp-recv");
+						if(temp_str) free(temp_str);
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-recv action");
+						return NULL;
+					}
+
+					if(temp_str) free(temp_str);
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-recv action");
+
+					return ret;
+				}
+				/* create a string with the recieved data */
+				else if(temp_uint != -1 && !(ret = sts_value_create(script, STS_STRING)))
+				{
+					STS_ERROR_SIMPLE("could not create string retval in socket-tcp-recv");
+					if(temp_str) free(temp_str);
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-recv action");
+					return NULL;
+				}
+
+				if(temp_str)
+				{
+					ret->string.length = temp_ulong;
+					ret->string.data = temp_str;
+				}
+				else
+				{
+					ret->string.length = 0;
+					ret->string.data = sts_memdup("", 0);
+				}
+				
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-recv action");
+			}
+			else {STS_ERROR_SIMPLE("socket-tcp-send action requires a socket"); return NULL;}
+		}
+		ACTION(else if, "socket-tcp-would-block") /* tests if a socket will block */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+
+				if(!IS_CLI_SOCKET(eval_value))
+				{
+					fprintf(stderr, "the socket-tcp-would-block action requires a socket\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-would-block action");
+					return NULL;
+				}
+
+				VALUE_FROM_NUMBER(ret, zed_net_check_would_block(&CLI_SOCKET(eval_value)->socket));
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-would-block action");
+			}
+			else {STS_ERROR_SIMPLE("socket-tcp-would-block action requires a socket"); return NULL;}
+		}
+		ACTION(else if, "socket-tcp-accept") /* returns a socket upon connection (socket, out_client_socket) */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next && args->next->next)
+			{
+				EVAL_ARG(args->next);
+				first_arg_value = eval_value;
+				EVAL_ARG(args->next->next);
+
+				if(!IS_CLI_SOCKET(first_arg_value))
+				{
+					fprintf(stderr, "the socket-tcp-accept action requires a socket\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-accept action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp-accept action");
+					return NULL;
+				}
+
+				if(!(temp_value = cli_socket_new(script)))
+				{
+					STS_ERROR_SIMPLE("could not create return socket");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-accept action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp-accept action");
+					return NULL;
+				}
+
+				if((temp_int = zed_net_tcp_accept(&CLI_SOCKET(first_arg_value)->socket, &CLI_SOCKET(temp_value)->socket, &address)))
+				{
+					if(!sts_value_reference_decrement(script, temp_value)) STS_ERROR_SIMPLE("could not decrement references for the old temp value in the socket-tcp-accept action");
+
+					/* just dont touch the outsocket value */
+				}
+				else
+				{
+					/* set the 2nd arg reference to the new socket */
+
+					if(sts_value_copy(script, eval_value, temp_value, 0))
+					{
+						STS_ERROR_SIMPLE("could not set outsock to the client socket");
+						if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-accept action");
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp-accept action");
+						return NULL;
+					}
+
+					if(!sts_value_reference_decrement(script, temp_value)) STS_ERROR_SIMPLE("could not decrement references for the old temp value in the socket-tcp-accept action");
+				}
+
+				VALUE_FROM_NUMBER(ret, temp_int);
+
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-would-block action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp-would-block action");
+			}
+			else {STS_ERROR_SIMPLE("socket-tcp-accept action requires a socket and out_socket which is passed byref"); return NULL;}
+		}
+		#endif /* CLI_NO_SOCKETS */
+		
 
 		/* end of sts_string action type */
 	}
@@ -1027,6 +1446,17 @@ int main(int argc, char **argv)
 	char *script_text = NULL;
 	unsigned int i, offset = 0, line = 0, length = 0;
 	sts_value_t *ret = NULL, *temp_val = NULL, *args = NULL;
+
+
+
+	/* initialize external libs */
+	#ifndef CLI_NO_SOCKETS
+	if(zed_net_init())
+	{
+		STS_ERROR_SIMPLE("could not initialize networking");
+		return 1;
+	}
+	#endif
 	
 	
 	memset(&script, 0, sizeof(sts_script_t));
@@ -1041,7 +1471,12 @@ int main(int argc, char **argv)
 	
 	/* if no arguments, send execution to repl */
 	if(argc == 1)
+	{
+		#ifndef CLI_NO_SOCKETS
+		zed_net_shutdown();
+		#endif
 		return repl(&script);
+	}
 	else /* parse the arguments */
 	{
 		/* need to initialize the globals here because theres something set before eval can do it instead */
@@ -1051,7 +1486,7 @@ int main(int argc, char **argv)
 		if(!(args = calloc(1, sizeof(sts_value_t))))
 		{
 			fprintf(stderr, "could not allocate args array\n");
-			return 1;
+			goto error;
 		}
 
 		args->references++;
@@ -1062,7 +1497,7 @@ int main(int argc, char **argv)
 			if(!(temp_val = calloc(1, sizeof(sts_value_t))))
 			{
 				fprintf(stderr, "could not allocate argument string\n");
-				return 1;
+				goto error;
 			}
 
 			temp_val->references++;
@@ -1076,7 +1511,7 @@ int main(int argc, char **argv)
 		if(!sts_map_add_set(&script.globals->locals, "args", strlen("args"), args))
 		{
 			fprintf(stderr, "could not add args to globals\n");
-				return 1;
+			goto error;
 		}
 	}
 	
@@ -1085,7 +1520,7 @@ int main(int argc, char **argv)
 	if(!(script_text = read_file(&script, argv[1], &length)))
 	{
 		fprintf(stderr, "could not read file for parsing: %s\n", argv[1]);
-		return 1;
+		goto error;
 	}
 	
 	/* parse and eval */
@@ -1094,7 +1529,7 @@ int main(int argc, char **argv)
 	if(!(script.script = sts_parse(&script, NULL, script_text, argv[1], &offset, &line)))
 	{
 		fprintf(stderr, "parser error\n");
-		return 1;
+		goto error;
 	}
 	
 	/* debug_ast(script.script, 0); */
@@ -1110,7 +1545,19 @@ int main(int argc, char **argv)
 	if(!sts_destroy(&script))
 		fprintf(stderr, "problem cleaning up script");
 	free(script_text);
+
+	
+	
+	/* deinit external libs */
+	#ifndef CLI_NO_SOCKETS
+	zed_net_shutdown();
+	#endif
 	
 	return retval;
+error:
+	#ifndef CLI_NO_SOCKETS
+	zed_net_shutdown();
+	#endif
+	return 1;
 }
 #endif
