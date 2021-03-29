@@ -1282,7 +1282,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					 break;
 
 					/* this is bad, but this whole project is for personal use primarily */
-					if(!(temp_str = realloc(temp_str, temp_ulong + temp_int)))
+					if(!(temp_str = realloc(temp_str, temp_ulong + temp_int + 1)))
 					{
 						STS_ERROR_SIMPLE("could not resize temporary buffer in socket-tcp-recv");
 						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-recv action");
@@ -1292,6 +1292,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					memcpy(&temp_str[temp_ulong], buf, temp_int);
 
 					temp_ulong += temp_int;
+					temp_str[temp_ulong] = 0x0;
 				} while(temp_int == sizeof(buf));
 
 
