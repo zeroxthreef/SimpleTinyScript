@@ -657,7 +657,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 
 
 	GOTO_JMP(&cli_actions);
-	if(action->type == STS_STRING)
+	if(!GOTO_ACTIVATED && action->type == STS_STRING)
 	{
 		ACTION(if, "pipeout")
 		{

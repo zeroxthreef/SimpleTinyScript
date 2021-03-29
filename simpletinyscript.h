@@ -538,9 +538,11 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		#define GOTO_LABEL_CAT(a, b) GOTO_LABEL_CAT_(a, b)
 		#define GOTO_SET(id) do{args->label = && GOTO_LABEL_CAT(sts_jit_, __LINE__); args->router_id = (void *)(id); GOTO_LABEL_CAT(sts_jit_, __LINE__):;}while(0)
 		#define GOTO_JMP(id) do{if(args->router_id == (void *)(id)){goto *(args->label);}}while(0)
+		#define GOTO_ACTIVATED (args->router_id)
 	#else
 		#define GOTO_SET(id)
 		#define GOTO_JMP(id)
+		#define GOTO_ACTIVATED
 	#endif
 
 	GOTO_JMP(&sts_defaults);
