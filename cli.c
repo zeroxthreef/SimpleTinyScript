@@ -6,8 +6,18 @@ it is much nicer to use with these */
 #define STS_EMBEDDING_EXTRAS_IMPLEMENTATION
 #include "sts_embedding_extras.h"
 
-/* external public domain libs */
+/* ======= external public domain libs ======= */
+
+/* absolutely terrible, but this makes the build script cleaner and stops multiple definitions of init */
+#define init json_init
 #include "ext/pdjson/pdjson.h"
+#include "ext/pdjson/pdjson.c"
+#undef init
+
+
+#include "ext/Monocypher/src/monocypher.h"
+#include "ext/Monocypher/src/monocypher.c"
+
 
 #ifndef CLI_NO_SOCKETS
 
@@ -15,7 +25,8 @@ it is much nicer to use with these */
 #include "ext/zed_net/zed_net.h"
 
 #ifndef CLI_NO_TLS
-#include "ext/nuTLS/nutls.c"
+#define TLS_AMALGAMATION
+#include "ext/tlse/tlse.c"
 #endif /* CLI_NO_TLS */
 
 #endif /* CLI_NO_SOCKETS */
@@ -23,6 +34,8 @@ it is much nicer to use with these */
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+
+/* =========================================== */
 
 
 #ifndef CLI_ALLOW_SYSTEM

@@ -4,6 +4,9 @@
 [submodule "ext/zed_net"]
 	path = ext/zed_net
 	url = https://github.com/mackron/zed_net.git
-[submodule "ext/nuTLS"]
-	path = ext/nuTLS
-	url = https://github.com/turbo/nuTLS.git
+[submodule "ext/tlse"]
+	path = ext/tlse
+	url = https://github.com/eduardsui/tlse.git
+[submodule "ext/Monocypher"]
+	path = ext/Monocypher
+	url = https://github.com/LoupVaillant/Monocypher.git
