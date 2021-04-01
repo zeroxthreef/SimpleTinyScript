@@ -1,0 +1,28 @@
+local private_key (crypto-hash "cool password")
+local msg "hello world :)"
+
+
+local signature (crypto-sign $msg $private_key)
+
+
+print (base64-encode $signature)
+
+
+local pubkey (crypto-sign-public $private_key)
+
+
+
+
+if(crypto-check $msg $signature $pubkey) {
+	print pass
+}
+else {
+	print fail
+}
+
+if(crypto-check "hello world :(" $signature $pubkey) {
+	print fail
+}
+else {
+	print pass
+}

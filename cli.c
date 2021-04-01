@@ -14,6 +14,12 @@ it is much nicer to use with these */
 #include "ext/pdjson/pdjson.c"
 #undef init
 
+#define base64_encode base64_encode_ext
+#define base64_decode base64_decode_ext
+#include "ext/base64/base64.h"
+#include "ext/base64/base64.c"
+#undef base64_encode
+#undef base64_decode
 
 #include "ext/Monocypher/src/monocypher.h"
 #include "ext/Monocypher/src/monocypher.c"
@@ -660,12 +666,13 @@ char *import(sts_script_t *script, char *file)
 
 sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_scope_t *locals, sts_value_t **previous)
 {
-	sts_value_t *ret = NULL, *eval_value = NULL, *temp_value = NULL, *first_arg_value = NULL, *second_arg_value = NULL;
+	sts_value_t *ret = NULL, *eval_value = NULL, *temp_value = NULL, *first_arg_value = NULL, *second_arg_value = NULL, *third_arg_value = NULL;
 	FILE *proc_pipe = NULL, *file = NULL;
 	zed_net_address_t address;
 	char *temp_str = NULL, *popen_buf = NULL, buf[1024];
 	unsigned int i = 0, size = 0, total = 0, temp_uint = 0;
 	unsigned long temp_ulong = 0;
+	void *work_area = NULL;
 	int temp_int = 0;
 
 
@@ -1422,6 +1429,342 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp-would-block action");
 			}
 			else {STS_ERROR_SIMPLE("socket-tcp-accept action requires a socket and out_socket which is passed byref"); return NULL;}
+		}
+		ACTION(else if, "crypto-argon2i") /* hashes a string with salt and returns the hash string buffer */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+				first_arg_value = eval_value; /* password str */
+				EVAL_ARG(args->next->next);
+				second_arg_value = eval_value; /* salt str */
+				EVAL_ARG(args->next->next->next);
+				third_arg_value = eval_value; /* number of blocks in work area */
+				EVAL_ARG(args->next->next->next->next); /* number of iterations */
+				
+
+				if(first_arg_value->type != STS_STRING || second_arg_value->type != STS_STRING || third_arg_value->type != STS_NUMBER || eval_value->type != STS_NUMBER)
+				{
+					fprintf(stderr, "the crypto-argon2i action requires a string, string, number, and a final number\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, third_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					return NULL;
+				}
+
+				if(!(ret = sts_value_create(script, STS_STRING)))
+				{
+					fprintf(stderr, "could not create return string in crypto-argon2i action\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, third_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					return NULL;
+				}
+
+				/* made output hashes 32 bytes instead of 64 because it may be useful to sign messages with it as well. Might be a bad idea, but you would have to know the salt. We'll see */
+				if(!(ret->string.data = malloc(32 + 1)))
+				{
+					fprintf(stderr, "could not create return string data in crypto-argon2i action\n");
+					free(ret);
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, third_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					return NULL;
+				}
+
+				ret->string.data[32] = 0;
+				ret->string.length = 32;
+
+				if(!(work_area = malloc(third_arg_value->number * 1024)))
+				{
+					fprintf(stderr, "could not work area in crypto-argon2i action\n");
+					sts_value_reference_decrement(script, ret);
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, third_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+					return NULL;
+				}
+
+				crypto_argon2i(ret->string.data, ret->string.length, work_area, third_arg_value->number, eval_value->number, first_arg_value->string.data, first_arg_value->string.length, second_arg_value->string.data, second_arg_value->string.length);
+
+				free(work_area);
+
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+				if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+				if(!sts_value_reference_decrement(script, third_arg_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for an argument in crypto-argon2i");
+			}
+			else {STS_ERROR_SIMPLE("crypto-argon2i action requires a string, string, number, and number"); return NULL;}
+		}
+		ACTION(else if, "crypto-hash") /* hashes a message with blake2b */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+
+				if(eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "crypto-hash requires a string\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-hash action");
+					return NULL;
+				}
+
+				if(!(ret = sts_value_create(script, STS_STRING)))
+				{
+					fprintf(stderr, "could not create ret value in crypto-hash\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-hash action");
+					return NULL;
+				}
+
+				if(!(ret->string.data = calloc(1, 32 + 1)))
+				{
+					free(ret);
+					fprintf(stderr, "could not create ret value data in crypto-hash\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-hash action");
+					return NULL;
+				}
+
+				ret->string.length = 32;
+
+				crypto_blake2b_general(ret->string.data, ret->string.length, NULL, 0, eval_value->string.data, eval_value->string.length);
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-hash action");
+			}
+			else {STS_ERROR_SIMPLE("crypto-hash action requires a string"); return NULL;}
+		}
+		ACTION(else if, "crypto-sign-public") /* create a public key from a private key */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+
+				if(eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "crypto-sign-public action requires a 32 byte string\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-sign-public action");
+					return NULL;
+				}
+
+				if(eval_value->string.length != 32)
+				{
+					fprintf(stderr, "crypto-sign-public action requires a 32 byte string\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-sign-public action");
+					
+					VALUE_FROM_NUMBER(ret, 0);
+				}
+				else /* can create a key */
+				{
+					if(!(ret = sts_value_create(script, STS_STRING)))
+					{
+						fprintf(stderr, "could not create string in crypto-sign-public\n");
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-sign-public action");
+						return NULL;
+					}
+
+					if(!(ret->string.data = calloc(1, 32 + 1)))
+					{
+						fprintf(stderr, "could not create string data in crypto-sign-public\n");
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-sign-public action");
+						return NULL;
+					}
+
+					ret->string.length = 32;
+
+					crypto_sign_public_key(ret->string.data, eval_value->string.data);
+				}
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-sign-public action");
+			}
+			else {STS_ERROR_SIMPLE("socket-tcp-would-block action requires a socket"); return NULL;}
+		}
+		ACTION(else if, "crypto-sign") /* signs a message. According to the monocypher manual, its ed25519 but with blake2b */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+				first_arg_value = eval_value; /* message str */
+				EVAL_ARG(args->next->next); /* private key str */
+
+
+				if(first_arg_value->type != STS_STRING || eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "crypto-sign requires a string\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-sign action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-sign action");
+					return NULL;
+				}
+
+				if(eval_value->string.length != 32)
+				{
+					fprintf(stderr, "crypto-sign requires a 32 byte private key\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-sign action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-sign action");
+					
+					VALUE_FROM_NUMBER(ret, 0);
+				}
+				else /* can go ahead and sign the key */
+				{
+					if(!(ret = sts_value_create(script, STS_STRING)))
+					{
+						fprintf(stderr, "could not create ret value in crypto-sign\n");
+						if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-sign action");
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-sign action");
+						return NULL;
+					}
+
+					/* crypto sign is the only one that generates a 64 byte key */
+					if(!(ret->string.data = calloc(1, 64 + 1)))
+					{
+						free(ret);
+						fprintf(stderr, "could not create ret value data in crypto-sign\n");
+						if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-sign action");
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-sign action");
+						return NULL;
+					}
+
+					ret->string.length = 64;
+
+					crypto_sign(ret->string.data, eval_value->string.data, NULL, first_arg_value->string.data, first_arg_value->string.length);
+				}
+
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-sign action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-sign action");
+			}
+			else {STS_ERROR_SIMPLE("crypto-sign action requires a string"); return NULL;}
+		}
+		ACTION(else if, "crypto-check") /* checks the signature of a message using its public key. According to the monocypher manual, its ed25519 but with blake2b */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+				first_arg_value = eval_value; /* message str */
+				EVAL_ARG(args->next->next);
+				second_arg_value = eval_value; /* signature str */
+				EVAL_ARG(args->next->next->next); /* public key str */
+
+
+				if(first_arg_value->type != STS_STRING || eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "crypto-check requires a string\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-check action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-check action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-check action");
+					return NULL;
+				}
+
+				if(second_arg_value->string.length != 64)
+				{
+					fprintf(stderr, "crypto-check requires a 64 byte signature\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-check action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-check action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-check action");
+					
+					VALUE_FROM_NUMBER(ret, 0);
+				}
+				else if(eval_value->string.length != 32)
+				{
+					fprintf(stderr, "crypto-check requires a 32 byte public key\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-check action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-check action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-check action");
+					
+					VALUE_FROM_NUMBER(ret, 0);
+				}
+				else /* can go ahead and check the key */
+					VALUE_FROM_NUMBER(ret, crypto_check(second_arg_value->string.data, eval_value->string.data, first_arg_value->string.data, first_arg_value->string.length) ? 0 : 1);
+
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the crypto-check action");
+				if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-check action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the crypto-check action");
+			}
+			else {STS_ERROR_SIMPLE("crypto-check action requires a string"); return NULL;}
+		}
+		ACTION(else if, "base64-encode") /* encodes a string as base64 */
+		{
+			#define B64_SIZE(len) (4 * ((len + 2) / 3))
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+
+				if(eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "the base64-encode action requires a string\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the base64-encode action");
+					return NULL;
+				}
+
+				if(!(ret = sts_value_create(script, STS_STRING)))
+				{
+					fprintf(stderr, "could not create string value in base64-encode action\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the base64-encode action");
+					return NULL;
+				}
+
+				ret->string.length = B64_SIZE(eval_value->string.length);
+
+				if(!(ret->string.data = calloc(1, ret->string.length + 1)))
+				{
+					free(ret);
+					fprintf(stderr, "could not create string value data in base64-encode action\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the base64-encode action");
+					return NULL;
+				}
+
+				base64_encode_ext(ret->string.data, ret->string.length + 1, eval_value->string.data, eval_value->string.length);
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the base64-encode action");
+			}
+			else {STS_ERROR_SIMPLE("base64-encode requires a string"); return NULL;}
+		}
+		ACTION(else if, "base64-decode") /* decodes a base64 encoded string */
+		{
+			/* doesnt use that padding detection removal thing in the static function because thats extra branching and honestly a few extra bytes allocated just doesnt matter */
+			#define B64_DSIZE(len) (len / 4 * 3)
+
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+
+				if(eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "the base64-decode action requires a string\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the base64-decode action");
+					return NULL;
+				}
+
+				if(!(ret = sts_value_create(script, STS_STRING)))
+				{
+					fprintf(stderr, "could not create string value in base64-decode action\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the base64-decode action");
+					return NULL;
+				}
+
+				ret->string.length = B64_DSIZE(eval_value->string.length);
+
+				if(!(ret->string.data = calloc(1, ret->string.length + 1)))
+				{
+					free(ret);
+					fprintf(stderr, "could not create string value data in base64-decode action\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the base64-decode action");
+					return NULL;
+				}
+
+				base64_decode_ext(ret->string.data, ret->string.length + 1, eval_value->string.data);
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the base64-decode action");
+			}
+			else {STS_ERROR_SIMPLE("base64-decode requires a string"); return NULL;}
 		}
 		#endif /* CLI_NO_SOCKETS */
 		

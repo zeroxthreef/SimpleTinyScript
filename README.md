@@ -38,7 +38,9 @@ loop(< $i 10) {
 The core of sts lives in ``simpletinyscript.h`` which only depends on the C standard library. However, ``cli.c`` depends on system libraries and on the following public domain libraries which exist in ``ext/``:
 * [pdjson](https://github.com/skeeto/pdjson)
 * [zed_net](https://github.com/mackron/zed_net)
-* [nuTLS](https://github.com/turbo/nuTLS)
+* [Monocypher](https://github.com/eduardsui/tlse)
+* [tlse](https://github.com/LoupVaillant/Monocypher)
+* [base64](https://github.com/badzong/base64)
 
 ## Documentation
 
@@ -187,6 +189,27 @@ returns 1 if the socket would block
 
 **socket-tcp-accept socket out_client_socket_reference**<br />
 the out_socket_client_reference value will be set to the client socket (similar to pipeout) and returns 0 upon success, 1 upon would block, -1 upon error, and 2 upon the socket not able to listen
+
+**crypto-argon2i password_str salt_str block_num iteration_num**<br />
+returns a 32 byte string. Monocypher documentation recommends 100000 blocks and 3 iterations
+
+**crypto-hash str**<br />
+returns a 32 byte string hash using blake2b
+
+**crypto-sign-public privkey_str**<br />
+returns a 32 byte public key string. Requires a 32 byte private key string
+
+**crypto-sign message_str privkey_str**<br />
+returns a 64 byte signature string. the private key string must be 32 bytes
+
+**crypto-check message_str signature_str pubkey_str**<br />
+returns 1 if a correct 64 byte signature str is used for the 32 byte public key str on the message
+
+**base64-encode str**<br />
+return a b64 encoded string
+
+**base64-decode str**<br />
+return a decoded b64 string
 
 The following functions are documentation for ``stdlib.sts``
 ---
