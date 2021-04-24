@@ -36,11 +36,11 @@ sts_scope_t *sts_scope_pop(sts_script_t *script, sts_scope_t *scope);
 
 sts_map_row_t *sts_scope_search(sts_script_t *script, sts_scope_t *scope, void *key, unsigned int key_size);
 
-int sts_hashmap_set(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned long key_length, sts_value_t *value);
+int sts_hashmap_set(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned int key_length, sts_value_t *value);
 
-int sts_hashmap_del(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned long key_length);
+int sts_hashmap_del(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned int key_length);
 
-sts_value_t *sts_hashmap_get(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned long key_length);
+sts_value_t *sts_hashmap_get(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned int key_length);
 
 #endif /* end STS_EMBEDDING_EXTRAS_H__ */
 
@@ -182,7 +182,7 @@ sts_map_row_t *sts_scope_search(sts_script_t *script, sts_scope_t *scope, void *
 	return ret;
 }
 
-int sts_hashmap_set(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned long key_length, sts_value_t *value)
+int sts_hashmap_set(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned int key_length, sts_value_t *value)
 {
 	/*
 	# hashmap structure:
@@ -194,7 +194,7 @@ int sts_hashmap_set(sts_script_t *script, sts_value_t *hashmap, char *key, unsig
 	*/
 
 	sts_value_t *row_val = NULL, *hash_val = NULL, *key_val = NULL;
-	unsigned long hash = STS_FNV_OFFSET;
+	unsigned int hash = STS_FNV_OFFSET;
 
 
 	if(!hashmap || hashmap->type != STS_ARRAY)
@@ -253,7 +253,7 @@ int sts_hashmap_set(sts_script_t *script, sts_value_t *hashmap, char *key, unsig
 	return 0;
 }
 
-int sts_hashmap_del(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned long key_length)
+int sts_hashmap_del(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned int key_length)
 {
 	/*
 	# hashmap structure:
@@ -265,7 +265,7 @@ int sts_hashmap_del(sts_script_t *script, sts_value_t *hashmap, char *key, unsig
 	*/
 
 	sts_value_t *row = NULL;
-	unsigned long i, hash = STS_FNV_OFFSET;
+	unsigned int i, hash = STS_FNV_OFFSET;
 	double converted_hash;
 
 
@@ -327,7 +327,7 @@ int sts_hashmap_del(sts_script_t *script, sts_value_t *hashmap, char *key, unsig
 	return 0;
 }
 
-sts_value_t *sts_hashmap_get(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned long key_length)
+sts_value_t *sts_hashmap_get(sts_script_t *script, sts_value_t *hashmap, char *key, unsigned int key_length)
 {
 	/*
 	# hashmap structure:
@@ -339,7 +339,7 @@ sts_value_t *sts_hashmap_get(sts_script_t *script, sts_value_t *hashmap, char *k
 	*/
 
 	sts_value_t *row = NULL, *ret = NULL;
-	unsigned long i, hash = STS_FNV_OFFSET;
+	unsigned int i, hash = STS_FNV_OFFSET;
 	double converted_hash;
 
 
