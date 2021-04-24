@@ -678,7 +678,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			GOTO_SET(&sts_defaults);
 			if(args->next)
 			{
-				EVAL_ARG(args->next); if(eval_value->type == STS_STRING) STS_HASH(temp_uint, eval_value->string.data, eval_value->string.length);
+				EVAL_ARG(args->next); if(eval_value->type == STS_STRING){ temp_uint = STS_FNV_OFFSET; STS_HASH(temp_uint, eval_value->string.data, eval_value->string.length);}
 				VALUE_FROM_NUMBER(ret, (double)temp_uint);
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in typeof action");
 			}
