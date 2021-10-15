@@ -950,7 +950,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 						temp_uint = temp0_uint = 0;
 						if(!(temp_node = sts_parse(script, NULL, temp_str, eval_value->string.data, &temp_uint, &temp0_uint)))
 							STS_ERROR_SIMPLE("could not parse imported file");
-						else if(!(temp_value = sts_eval(script, temp_node, NULL, NULL, 0, 0)))
+						else if(!(temp_value = sts_eval(script, temp_node, locals, previous, 0, 0)))
 							STS_ERROR_SIMPLE("could not evaluate the imported file");
 						else
 						{
@@ -965,6 +965,29 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in import action");
 			}
 			else {STS_ERROR_SIMPLE("import action requires at least 2 arguments"); return NULL;}
+		}
+		ACTION(else if, "eval") /* parse and eval a string into the local scope */
+		{
+			GOTO_SET(&sts_defaults);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+				if(eval_value->type != STS_STRING) STS_ERROR_SIMPLE("eval requires the script argument to be a string");
+				temp_uint = temp0_uint = 0;
+				if(!(temp_node = sts_parse(script, NULL, eval_value->string.data, args->name ? args->name->script_name : "generated eval string", &temp_uint, &temp0_uint)))
+				{
+					STS_ERROR_SIMPLE("could not parse eval string");
+					VALUE_INIT(ret, STS_NIL);
+				}
+				else if(!(ret = sts_eval(script, temp_node, locals, previous, 0, 0)))
+				{
+					STS_ERROR_SIMPLE("could not evaluate the string");
+					VALUE_INIT(ret, STS_NIL);
+				}
+				sts_ast_delete(script, temp_node);
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for script string argument in eval action");
+			}
+			else {STS_ERROR_SIMPLE("eval action requires a string argument"); return NULL;}
 		}
 		ACTION(else if, "call") /* call function */
 		{
