@@ -829,6 +829,18 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			}
 			else {STS_ERROR_SIMPLE("number action requires 1 argument string"); return NULL;}
 		}
+		/* undo char (make string from number as char, not as a number). I dont like this syntax but sts is on its way out in my internal usage so i dont care that much */
+		ACTION(else if, "asc")
+		{
+			GOTO_SET(&sts_defaults);
+			if(args->next)
+			{
+				EVAL_ARG(args->next); if(eval_value->type == STS_NUMBER){ STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%c", (int)eval_value->number, "", 0); VALUE_INIT(ret, STS_STRING); ret->string.data = temp_str; ret->string.length = temp_uint; }
+				else {STS_ERROR_SIMPLE("asc action requires the argument to be a number"); sts_value_reference_decrement(script, eval_value); return NULL;}
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in asc action");
+			}
+			else {STS_ERROR_SIMPLE("asc action requires 1 argument number"); return NULL;}
+		}
 		ACTION(else if, "char")
 		{
 			GOTO_SET(&sts_defaults);

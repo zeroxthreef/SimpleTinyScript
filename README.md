@@ -95,6 +95,9 @@ retrieves the script filename from the AST
 **number var**<br />
 turns a string value into a number
 
+**asc number**<br />
+returns a string consisting of the ascii character equal to 'number'
+
 **char string index**<br />
 returns the numeric value of the character in 'string' at position 'index'
 
