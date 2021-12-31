@@ -1,0 +1,26 @@
+local i 0
+
+set $i 0
+loop(< $i 5) {
+	print hello
+	sleep 1
+	++ $i
+}
+
+print =======================================
+
+set $i 0
+loop(< $i 5) {
+	print hello
+	sleep 0.5
+	++ $i
+}
+
+print =======================================
+
+set $i 0
+loop(< $i 5) {
+	print hello
+	sleep 2
+	++ $i
+}

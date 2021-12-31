@@ -1,0 +1,19 @@
+import stdlib.sts
+local boolean $true
+
+if(== $true $false) {
+	print very bad
+}
+elseif(&& [== $true $true] [== $false $false]) {
+	print very good
+}
+
+print nil: (typeof $nil) true: (typeof $true) false: (typeof $false)
+
+local serialize (hashmap "hello" "world" \
+		"thing" $true \
+		"another" [array $false $true 1234.56789] \
+		end $false \
+	)
+
+print serialized: (json $serialize 1)

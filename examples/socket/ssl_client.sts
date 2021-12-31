@@ -1,0 +1,20 @@
+import stdlib.sts
+
+local sock (socket-tcp 0 0 0) #make a blocking socket
+
+if(== $sock $nil) {
+	print could not open socket in client
+}
+else {
+	if(socket-tcp-connect $sock "old.reddit.com" 443) {
+		print could not connect to host
+	}
+
+	if(socket-enable-ssl-client $sock) {
+		print could not setup ssl client
+	}
+
+	socket-tcp-send $sock "GET / HTTP/1.0\r\nHost: google.com\r\n\r\n"
+
+	print cool, the host replied (socket-tcp-recv $sock)
+}

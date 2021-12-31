@@ -20,6 +20,7 @@ function STS_NUMBER {copy 2}
 function STS_STRING {copy 3}
 function STS_ARRAY {copy 4}
 function STS_FUNCTION {copy 5}
+function STS_BOOLEAN {copy 6}
 
 
 # hashmap implementation ================
@@ -559,6 +560,9 @@ function string-value-print value {
     elseif(== (typeof $value) (STS_STRING)) {
         if(!= (typeof $ret) (STS_STRING)) {set $ret (string "\"" $value "\"")}
     }
+     elseif(== (typeof $value) (STS_BOOLEAN)) {
+        if(!= (typeof $ret) (STS_STRING)) {set $ret (string $value)}
+    }
 
     pass $ret
 }
@@ -584,6 +588,9 @@ function typeof-string value {
     }
     elseif(== (typeof $value) (STS_STRING)) {
         set $ret (copy "STS_STRING")
+    }
+    elseif(== (typeof $value) (STS_BOOLEAN)) {
+        set $ret (copy "STS_BOOLEAN")
     }
 
     pass $ret

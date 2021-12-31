@@ -40,6 +40,7 @@ it is much nicer to use with these */
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 /* =========================================== */
 
@@ -58,6 +59,8 @@ typedef struct
 {
 	unsigned long references;
 	zed_net_socket_t socket;
+	SSL *ssl;
+	char *name;
 } cli_socket_t;
 
 #define CLI_SOCKET(value) ((cli_socket_t *)value->external.data_ptr)
@@ -68,6 +71,12 @@ int cli_socket_refdec(sts_script_t *script, sts_value_t *value)
 	if(IS_CLI_SOCKET(value) && (!CLI_SOCKET(value)->references || !--CLI_SOCKET(value)->references))
 	{
 		zed_net_socket_close(&CLI_SOCKET(value)->socket);
+		if(CLI_SOCKET(value)->ssl)
+		{
+			SSL_shutdown(CLI_SOCKET(value)->ssl);
+			SSL_CTX_free(CLI_SOCKET(value)->ssl);
+		}
+		if(CLI_SOCKET(value)->name) free(CLI_SOCKET(value)->name);
 		free(value->external.data_ptr);
 	}
 
@@ -241,7 +250,7 @@ sts_value_t *sts_value_from_json(sts_script_t *script, json_stream *json, char *
 			return ret;
 		break;
 		case JSON_TRUE:
-			if(!(ret = sts_value_from_number(script, 1.0)))
+			if(!(ret = sts_value_from_boolean(script, 1)))
 			{
 				fprintf(stderr, "could not create true value\n");
 				return NULL;
@@ -250,7 +259,7 @@ sts_value_t *sts_value_from_json(sts_script_t *script, json_stream *json, char *
 			return ret;
 		break;
 		case JSON_FALSE:
-			if(!(ret = sts_value_from_number(script, 0.0)))
+			if(!(ret = sts_value_from_boolean(script, 0)))
 			{
 				fprintf(stderr, "could not create false value\n");
 				return NULL;
@@ -470,8 +479,11 @@ int sts_json_from_value(sts_script_t *script, char **str_buf, sts_value_t *value
 			STS_JSON_EMIT_ALONE("null", 4);
 		break;
 		case STS_NUMBER:
-			temp_len = snprintf(num_buf, 512, "%g", value->number);
+			temp_len = snprintf(num_buf, 512, "%1.17g", value->number);
 			STS_JSON_EMIT_ALONE(num_buf, temp_len);
+		break;
+		case STS_BOOLEAN:
+			STS_JSON_EMIT_ALONE(value->boolean ? "true" : "false", value->boolean ? 4 : 5);
 		break;
 		case STS_STRING:
 			STS_JSON_EMIT_ALONE("\"", 1);
@@ -693,7 +705,8 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
-					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, size, "%g", eval_value->number, " ", 1); break;
+					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, size, "%1.17g", eval_value->number, " ", 1); break;
+					case STS_BOOLEAN: STS_STRING_ASSEMBLE_FMT(temp_str, size, "%s", eval_value->boolean ? "true" : "false", " ", 1); break;
 					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, size, eval_value->string.data, eval_value->string.length, " ", 1); break;
 				}
 			ACTION_END_ARGLOOP
@@ -919,12 +932,13 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
-					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%g", eval_value->number, " ", 0); break;
+					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%1.17g", eval_value->number, " ", 0); break;
 					case STS_NIL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", "nil", " ", 0); break;
 					case STS_ARRAY: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[array passed and is %u elements long]", eval_value->array.length,  " ", 0); break;
 					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, temp_uint, eval_value->string.data, eval_value->string.length, " ", 0); break;
 					case STS_EXTERNAL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%p", eval_value->external.data_ptr, " ", 0); break;
 					case STS_FUNCTION: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[function passed and it takes %u arguments]", eval_value->function.argument_identifiers->array.length, " ", 0); break;
+					case STS_BOOLEAN: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", eval_value->boolean ? "true" : "false", " ", 0); break;
 				}
 			ACTION_END_ARGLOOP
 			for(i = 0; i < temp_uint; ++i)
@@ -938,12 +952,13 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
-					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%g", eval_value->number, " ", 0); break;
+					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%1.17g", eval_value->number, " ", 0); break;
 					case STS_NIL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", "nil", " ", 0); break;
 					case STS_ARRAY: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[array passed and is %u elements long]", eval_value->array.length,  " ", 0); break;
 					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, temp_uint, eval_value->string.data, eval_value->string.length, " ", 0); break;
 					case STS_EXTERNAL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%p", eval_value->external.data_ptr, " ", 0); break;
 					case STS_FUNCTION: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[function passed and it takes %u arguments]", eval_value->function.argument_identifiers->array.length, " ", 0); break;
+					case STS_BOOLEAN: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", eval_value->boolean ? "true" : "false", " ", 0); break;
 				}
 			ACTION_END_ARGLOOP
 			for(i = 0; i < temp_uint; ++i)
@@ -1009,6 +1024,9 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		}
 		ACTION(else if, "sleep") /* sleeps for the number of seconds provided */
 		{
+			#ifdef __unix__
+			struct timespec ts;
+			#endif
 			GOTO_SET(&cli_actions);
 			if(args->next)
 			{
@@ -1020,7 +1038,15 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					return NULL;
 				}
 
+				#ifdef __unix__
+				ts.tv_sec = eval_value->number;
+				ts.tv_nsec = fmod(eval_value->number, 1.0) * 1000000000.0;
+				nanosleep(&ts, NULL);
+				#elif defined(WIN32)
+				Sleep(eval_value->number);
+				#else
 				sleep((unsigned int)eval_value->number);
+				#endif
 				VALUE_FROM_NUMBER(ret, 1.0);
 
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in sleep action");
@@ -1229,6 +1255,15 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					temp_uint = 2;
 				}
 
+				if(!(CLI_SOCKET(first_arg_value)->name = sts_memdup(second_arg_value->string.data, second_arg_value->string.length)))
+				{
+					STS_ERROR_SIMPLE("could not duplicate the host string in socket-tcp-connect");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-connect action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp-connect action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the third argument in the socket-tcp-connect action");
+					return NULL;
+				}
+
 				VALUE_FROM_NUMBER(ret, temp_uint);
 
 				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-connect action");
@@ -1254,7 +1289,10 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					return NULL;
 				}
 
-				VALUE_FROM_NUMBER(ret, zed_net_tcp_socket_send(&CLI_SOCKET(first_arg_value)->socket, eval_value->string.data, eval_value->string.length));
+				if(CLI_SOCKET(first_arg_value)->ssl)
+					VALUE_FROM_NUMBER(ret, SSL_write(CLI_SOCKET(first_arg_value)->ssl, eval_value->string.data, eval_value->string.length));
+				else
+					VALUE_FROM_NUMBER(ret, zed_net_tcp_socket_send(&CLI_SOCKET(first_arg_value)->socket, eval_value->string.data, eval_value->string.length));
 
 				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-send action");
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-tcp-send action");
@@ -1296,7 +1334,10 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 					if(zed_net_check_would_block(&CLI_SOCKET(eval_value)->socket))
 						break;
 
-					temp_int = zed_net_tcp_socket_receive(&CLI_SOCKET(eval_value)->socket, buf, sizeof(buf));
+					if(CLI_SOCKET(eval_value)->ssl)
+						temp_int = SSL_read(CLI_SOCKET(eval_value)->ssl, buf, sizeof(buf));
+					else
+						temp_int = zed_net_tcp_socket_receive(&CLI_SOCKET(eval_value)->socket, buf, sizeof(buf));
 					
 					if(temp_int <= 0)
 					 break;
@@ -1430,6 +1471,49 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			}
 			else {STS_ERROR_SIMPLE("socket-tcp-accept action requires a socket and out_socket which is passed byref"); return NULL;}
 		}
+		ACTION(else if, "socket-enable-ssl-client") /* handshake with server */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+				if(!IS_CLI_SOCKET(eval_value))
+				{
+					STS_ERROR_SIMPLE("socket-enable-ssl-client: arg0 isnt socket");
+					sts_value_reference_decrement(script, eval_value);
+					return NULL;
+				}
+
+				if(!(CLI_SOCKET(eval_value)->ssl = SSL_CTX_new(SSLv3_client_method())))
+				{
+					STS_ERROR_SIMPLE("socket-enable-ssl-client: ubable to init ssl");
+					++temp_uint;
+				}
+
+				if(SSL_set_fd(CLI_SOCKET(eval_value)->ssl, CLI_SOCKET(eval_value)->socket.handle) != 1)
+				{
+					STS_ERROR_SIMPLE("socket-enable-ssl-client: unable to set fd");
+					++temp_uint;
+				}
+				if(tls_sni_set(CLI_SOCKET(eval_value)->ssl, CLI_SOCKET(eval_value)->name) != 1)
+				{
+					STS_ERROR_SIMPLE("socket-enable-ssl-client: unable to set sni");
+					++temp_uint;
+				}
+				if(SSL_connect(CLI_SOCKET(eval_value)->ssl) != 1)
+				{
+					STS_ERROR_SIMPLE("socket-enable-ssl-client: unable to handshake");
+					++temp_uint;
+				}
+
+				VALUE_FROM_NUMBER(ret, temp_uint);
+
+				if(!sts_value_reference_decrement(script, eval_value))
+					STS_ERROR_SIMPLE("socket-enable-ssl-client: argument isnt socket");
+			}
+			else {STS_ERROR_SIMPLE("socket-enable-ssl-client expects socket"); return NULL;}
+		}
+		#endif /* CLI_NO_SOCKETS */
 		ACTION(else if, "crypto-argon2i") /* hashes a string with salt and returns the hash string buffer */
 		{
 			GOTO_SET(&cli_actions);
@@ -1766,7 +1850,6 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			}
 			else {STS_ERROR_SIMPLE("base64-decode requires a string"); return NULL;}
 		}
-		#endif /* CLI_NO_SOCKETS */
 		
 
 		/* end of sts_string action type */
@@ -1781,7 +1864,8 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		ACTION_BEGIN_ARGLOOP
 			switch(eval_value->type)
 			{
-				case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, size, "%g", eval_value->number, " ", 1); break;
+				case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, size, "%1.17g", eval_value->number, " ", 1); break;
+				case STS_BOOLEAN: STS_STRING_ASSEMBLE_FMT(temp_str, size, "%s", eval_value->boolean ? "true" : "false", " ", 1); break;
 				case STS_STRING: STS_STRING_ASSEMBLE(temp_str, size, "\"", 1, "", 0); STS_STRING_ASSEMBLE(temp_str, size, eval_value->string.data, eval_value->string.length, "\" ", 2); break;
 			}
 		ACTION_END_ARGLOOP

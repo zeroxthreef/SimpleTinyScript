@@ -193,6 +193,9 @@ returns 1 if the socket would block
 **socket-tcp-accept socket out_client_socket_reference**<br />
 the out_socket_client_reference value will be set to the client socket (similar to pipeout) and returns 0 upon success, 1 upon would block, -1 upon error, and 2 upon the socket not able to listen
 
+**socket-enable-ssl-client socket**<br />
+enable ssl on the current socket. Returns nonzero on error
+
 **crypto-argon2i password_str salt_str block_num iteration_num**<br />
 returns a 32 byte string. Monocypher documentation recommends 100000 blocks and 3 iterations
 

@@ -24,7 +24,8 @@ enum sts_value_types
 	STS_NUMBER,
 	STS_STRING,
 	STS_ARRAY,
-	STS_FUNCTION
+	STS_FUNCTION,
+	STS_BOOLEAN
 };
 
 enum sts_node_types
@@ -103,6 +104,7 @@ struct sts_value_t
 			void (*refinc)(sts_script_t *script, sts_value_t *value);
 		} external;
 		double number;
+		char boolean;
 		struct
 		{
 			char *data;
@@ -442,12 +444,14 @@ sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_scope_t *locals
 	switch(ast->type)
 	{
 		case STS_NODE_IDENTIFIER: /* search entire scope */
-			if(strcmp(ast->value->string.data + 1, "nil") != 0)
+			if(strcmp(ast->value->string.data + 1, "nil") != 0 && strcmp(ast->value->string.data + 1, "true") != 0 && strcmp(ast->value->string.data + 1, "false") != 0)
 			{
 				STS_SCOPE_SEARCH(locals, ast->value->string.data + 1, ast->value->string.length - 1, row, {});
 				if(row){ret = row->value; STS_VALUE_REFINC(script, ret);}
 			}
-			if(!ret){ if(!(STS_CREATE_VALUE(ret))) STS_ERROR_SIMPLE("could not create and initialize nil value"); else{ret->references = 1; ret->type = STS_NIL;} }
+			if(!ret && !strcmp(ast->value->string.data + 1, "nil")){ if(!(STS_CREATE_VALUE(ret))) STS_ERROR_SIMPLE("could not create and initialize nil value"); else{ret->references = 1; ret->type = STS_NIL;} }
+			else if(!ret && !strcmp(ast->value->string.data + 1, "true")){ if(!(STS_CREATE_VALUE(ret))) STS_ERROR_SIMPLE("could not create and initialize true boolean value"); else{ret->references = 1; ret->type = STS_BOOLEAN; ret->boolean = 1;} }
+			else if(!ret && !strcmp(ast->value->string.data + 1, "false")){ if(!(STS_CREATE_VALUE(ret))) STS_ERROR_SIMPLE("could not create and initialize false boolean value"); else{ret->references = 1; ret->type = STS_BOOLEAN; ret->boolean = 0;} }
 		break;
 		case STS_NODE_VALUE:
 			ret = ast->value; STS_VALUE_REFINC(script, ret);
@@ -542,7 +546,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 	#else
 		#define GOTO_SET(id)
 		#define GOTO_JMP(id)
-		#define GOTO_ACTIVATED
+		#define GOTO_ACTIVATED 0
 	#endif
 
 	GOTO_JMP(&sts_defaults);
@@ -555,12 +559,13 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
-					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%g", eval_value->number, " ", 1); break;
+					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%1.17g", eval_value->number, " ", 1); break;
 					case STS_NIL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", "nil", " ", 1); break;
 					case STS_ARRAY: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[array passed and is %u elements long]", eval_value->array.length,  " ", 1); break;
 					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, temp_uint, eval_value->string.data, eval_value->string.length, " ", 1); break;
 					case STS_EXTERNAL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%p", eval_value->external.data_ptr, " ", 1); break;
 					case STS_FUNCTION: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[function passed and it takes %u arguments]", eval_value->function.argument_identifiers->array.length, " ", 1); break;
+					case STS_BOOLEAN: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", eval_value->boolean ? "true" : "false", " ", 1); break;
 				}
 			ACTION_END_ARGLOOP
 			STS_STRING_ASSEMBLE(temp_str, temp_uint, "\n", 1, "", 0);
@@ -583,12 +588,13 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			ACTION_BEGIN_ARGLOOP
 				switch(eval_value->type)
 				{
-					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%g", eval_value->number, "", 0); break;
+					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%1.17g", eval_value->number, "", 0); break;
 					case STS_NIL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", "nil", "", 0); break;
 					case STS_ARRAY: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[array passed and is %u elements long]", eval_value->array.length,  "", 0); break;
 					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, temp_uint, eval_value->string.data, eval_value->string.length, "", 0); break;
 					case STS_EXTERNAL: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%p", eval_value->external.data_ptr, "", 0); break;
 					case STS_FUNCTION: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "[function passed and it takes %u arguments]", eval_value->function.argument_identifiers->array.length, "", 0); break;
+					case STS_BOOLEAN: STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%s", eval_value->boolean ? "true" : "false", "", 0); break;
 				}
 			ACTION_END_ARGLOOP
 			VALUE_INIT(ret, STS_STRING); ret->string.data = temp_str; ret->string.length = temp_uint;
@@ -697,6 +703,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 					case STS_STRING: VALUE_INIT(ret, STS_NUMBER); ret->number = (double)STS_STRING; break;
 					case STS_ARRAY: VALUE_INIT(ret, STS_NUMBER); ret->number = (double)STS_ARRAY; break;
 					case STS_FUNCTION: VALUE_INIT(ret, STS_NUMBER); ret->number = (double)STS_FUNCTION; break;
+					case STS_BOOLEAN: VALUE_INIT(ret, STS_NUMBER); ret->number = (double)STS_BOOLEAN; break;
 				}
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in typeof action");
 			}
@@ -1103,6 +1110,10 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 						if(temp_value_arg->function.argument_identifiers->array.length operator eval_value->function.argument_identifiers->array.length) {VALUE_INIT(ret, STS_NUMBER); ret->number = 1.0;}	\
 						else {VALUE_INIT(ret, STS_NUMBER); ret->number = 0.0;}	\
 					break;	\
+					case STS_BOOLEAN:	\
+						if(temp_value_arg->boolean operator eval_value->boolean) {VALUE_INIT(ret, STS_NUMBER); ret->number = 1.0;}	\
+						else {VALUE_INIT(ret, STS_NUMBER); ret->number = 0.0;}	\
+					break;	\
 				}	\
 				if(!sts_value_reference_decrement(script, temp_value_arg)) STS_ERROR_SIMPLE("could not decrement references for first argument in " #operator " action");	\
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in " #operator" action");	\
@@ -1373,6 +1384,7 @@ int sts_value_copy(sts_script_t *script, sts_value_t *dest, sts_value_t *source,
 				dest->function.argument_identifiers->references++;
 			}
 		break;
+		case STS_BOOLEAN: dest->boolean = source->boolean; break;
 	}
 	return ret;
 }
@@ -1388,6 +1400,7 @@ int sts_value_test(sts_value_t *value) /* STS_NIL is always 0 */
 		case STS_STRING: if(!value->string.length) return 0; break;
 		case STS_ARRAY: if(!value->array.length) return 0; break;
 		/* case STS_FUNCTION: do nothing. Its just always valid */
+		case STS_BOOLEAN: if(!value->boolean) return 0; break;
 	}
 	return 1;
 }

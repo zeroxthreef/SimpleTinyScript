@@ -115,6 +115,22 @@ sts_value_t *sts_value_from_number(sts_script_t *script, double num)
 	return ret;
 }
 
+sts_value_t *sts_value_from_boolean(sts_script_t *script, char boolean)
+{
+	sts_value_t *ret = NULL;
+
+
+	if(!(ret = sts_value_create(script, STS_BOOLEAN)))
+	{
+		fprintf(stderr, "could not create boolean value\n");
+		return NULL;
+	}
+
+	ret->boolean = boolean;
+
+	return ret;
+}
+
 void sts_array_resize(sts_script_t *script, sts_value_t *value, unsigned int size)
 {
 	STS_ARRAY_RESIZE(value, size);
