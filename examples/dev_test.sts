@@ -125,3 +125,10 @@ function test arg {
 }
 
 test "old arg"
+
+local replace_thing (array 1 2 3 4 5)
+local insert_thing "hello"
+replace $replace_thing 0 $insert_thing
+print world: (get $replace_thing 0)
+set $insert_thing "mutated"
+print world2: (get $replace_thing 0)

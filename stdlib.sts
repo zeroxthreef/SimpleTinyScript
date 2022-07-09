@@ -22,9 +22,7 @@ function STS_ARRAY {copy 4}
 function STS_FUNCTION {copy 5}
 function STS_BOOLEAN {copy 6}
 
-
-# hashmap implementation ================
-
+# (incorrect, but unfortunately stuck) hashmap implementation ================
 # hashmap structure:
 #   [array
 #       [array *hash* *key string* *value*]
@@ -124,7 +122,7 @@ function hashmap-exists map key {
     pass $ret
 }
 
-# hashmap-get returns 0 if the key already existed and 1 if a new one had to be created
+# hashmap-set returns 0 if the key already existed and 1 if a new one had to be created
 function hashmap-set map key value {
     local ret $nil
     local row $nil
@@ -157,6 +155,40 @@ function hashmap-set map key value {
         set (get $map [- (sizeof $map) 1]) $row
 
         set $ret 1
+    }
+
+    pass $ret
+}
+
+# hashmap-replace returns 0 if the key already existed and 1 if a new one had to be created
+function hashmap-replace map key value {
+    local ret $nil
+    local row $nil
+    local hash $nil
+    local break 0
+    local i 0
+
+    if(&& [!= (typeof $map) (STS_ARRAY)] [!= (typeof $key) (STS_STRING)]) {
+        stdlib-set-error hashmap "the map arg must be an array and the key must be a string"
+    }
+    else {
+        set $hash (string-hash $key)
+
+        loop(&& [< $i (sizeof $map)] [! $break]) {
+            if(== $hash [get [get $map $i] 0]) {
+                # set [get [get $map $i] 2] $value
+                replace (get $map $i) 2 $value
+                set $ret 0
+                ++ $break
+            }
+
+            ++ $i
+        }
+    }
+
+    # add new key instead
+    if(== $ret $nil) {
+        set $ret (hashmap-set $map $key $value)
     }
 
     pass $ret

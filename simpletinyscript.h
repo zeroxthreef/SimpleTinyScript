@@ -93,7 +93,7 @@ struct sts_name_container_t
 
 struct sts_value_t
 {
-	char type;
+	char type, readonly:1;
 	unsigned int references;
 	union
 	{
@@ -129,6 +129,7 @@ struct sts_script_t
 	void *userdata;
 	sts_node_t *script;
 	sts_scope_t *globals;
+	sts_map_row_t *interned; /* all parsed strings are interned */
 	char *(*read_file)(sts_script_t *script, char *file, unsigned int *size);
 	char *(*import_file)(sts_script_t *script, char *file);
 	sts_value_t *(*router)(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_scope_t *locals, sts_value_t **previous);
@@ -165,6 +166,9 @@ int sts_value_copy(sts_script_t *script, sts_value_t *dest, sts_value_t *source,
 
 /* test if value is "true" or "false". 1 is true, 0 is false */
 int sts_value_test(sts_value_t *value);
+
+/* pass through strings and it'll either pass through the passed string or refdec the passed string */
+sts_value_t *sts_value_string_intern(sts_script_t *script, sts_value_t *value);
 
 /* simple hash map functions */
 sts_map_row_t *sts_map_add_set(sts_map_row_t **row, void *key, unsigned int key_size, void *value);
@@ -242,6 +246,14 @@ void *sts_memdup(void *src, unsigned int size);
 		if((position) >= (value_ptr)->array.length){ STS_ERROR_SIMPLE("position out of bounds"); on_error}	\
 		else if((position) == (value_ptr)->array.length - 1){ if(!sts_value_reference_decrement(script, (value_ptr)->array.data[(position)])){ STS_ERROR_SIMPLE("could not refdec value at position specified"); on_error} (value_ptr)->array.length--;}	\
 		else{ if(!sts_value_reference_decrement(script, (value_ptr)->array.data[(position)])){ STS_ERROR_SIMPLE("could not refdec value at position specified"); on_error} memmove(&(value_ptr)->array.data[(position)], &(value_ptr)->array.data[(position) + 1], ((value_ptr)->array.length - ((position) + 1)) * sizeof(sts_value_t **)); (value_ptr)->array.length--;}	\
+	}while(0)
+
+#define STS_VALUE_EXPECT_MUTABLE(value, on_not) do{	\
+		if((value)->readonly)	\
+		{	\
+			STS_ERROR_SIMPLE("cannot mutate a readonly value");	\
+			{on_not;}	\
+		}	\
 	}while(0)
 
 #define STS_HASH(variable, data, size) do{unsigned int i; for(i = 0; i < (size); ++i){(variable) ^= ((char *)(data))[i]; (variable) *= STS_FNV_PRIME;} }while(0)
@@ -326,7 +338,7 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 	sts_value_t *value = NULL;
 	sts_name_container_t *name = NULL;
 
-	#define PARSER_ERROR(str) do{ STS_ERROR_PRINT(STS_ERROR_PRINT_ARG0 "parser error: line %u, " str STS_ERROR_CONCAT, *line); return NULL;}while(0)
+	#define PARSER_ERROR(str) do{ STS_ERROR_PRINT(STS_ERROR_PRINT_ARG0 "parser error: '%s': line %u, " str STS_ERROR_CONCAT, script_name, *line); return NULL;}while(0)
 	#define PARSER_SKIP_WHITESPACE() while(script_text[*offset] && script_text[*offset] != '\n' && isspace(script_text[*offset]))(*offset)++
 	#define PARSER_SKIP_NOT_WHITESPACE() while(script_text[*offset] && script_text[(*offset) + 1] && script_text[(*offset) + 1] != ']' && script_text[(*offset) + 1] != '[' && script_text[(*offset) + 1] != ')' && script_text[(*offset) + 1] != '(' && script_text[(*offset) + 1] != '}' && script_text[(*offset) + 1] != '{' && script_text[(*offset) + 1] != ';' && script_text[(*offset) + 1] != '\"' && !isspace(script_text[(*offset) + 1]))(*offset)++
 	#define PARSER_ADD_EXPRESSION(expr_start, expr_progress, set_value, set_line) do{ sts_node_t *temp_node = NULL;	\
@@ -387,6 +399,8 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 				value->string.length = *offset - start;
 				/* printf("adding string literal '%s'\n", value->string); */
 				value->type = STS_STRING; value->references = 1; STS_STRING_UNESCAPE_STRING(value->string.data, value->string.length);
+				if(!(value = sts_value_string_intern(script, value)))
+					PARSER_ERROR("could not intern string");
 				PARSER_ADD_EXPRESSION(expression_node, expression_progress, value, *line);
 			break;
 			case '(': case '{': case '[':
@@ -412,9 +426,11 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 					value->string.length = *offset + 1 - start;
 					/* printf("adding str %s\n", value->string); */
 					value->type = STS_STRING; value->references = 1;
+					if(!(value = sts_value_string_intern(script, value)))
+						PARSER_ERROR("could not intern string");
 				}
 				PARSER_ADD_EXPRESSION(expression_node, expression_progress, value, *line);
-				if(value->type == STS_STRING && value->string.length > 1 && value->string.data[0] == '$' && value->string.data[1] != '$'){expression_progress->type = STS_NODE_IDENTIFIER; value->references = 1;}
+				if(value->type == STS_STRING && value->string.length > 1 && value->string.data[0] == '$' && value->string.data[1] != '$'){expression_progress->type = STS_NODE_IDENTIFIER;}
 			break;
 		}
 		if(break_out) break;
@@ -483,7 +499,7 @@ int sts_destroy(sts_script_t *script)
 {
 	if(script->globals) STS_SCOPE_POP(script->globals, {STS_ERROR_SIMPLE("could not clean up globals");});
 	sts_ast_delete(script, script->script);
-
+	if(script->interned) STS_DESTROY_MAP(script->interned, {STS_ERROR_SIMPLE("could not clean up interned string data"); return 0;});
 	return 1;
 }
 
@@ -687,6 +703,17 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				EVAL_ARG(args->next); if(eval_value->type == STS_STRING){ temp_uint = STS_FNV_OFFSET; STS_HASH(temp_uint, eval_value->string.data, eval_value->string.length);}
 				VALUE_FROM_NUMBER(ret, (double)temp_uint);
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in typeof action");
+			}
+			else {STS_ERROR_SIMPLE("string-hash action requires at least 1 argument"); return NULL;}
+		}
+		ACTION(else if, "const")
+		{
+			GOTO_SET(&sts_defaults);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+				eval_value->readonly;
+				ret = eval_value;
 			}
 			else {STS_ERROR_SIMPLE("string-hash action requires at least 1 argument"); return NULL;}
 		}
@@ -923,6 +950,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			{
 				EVAL_ARG(args->next); temp_value_arg = eval_value;
 				EVAL_ARG(args->next->next);
+				STS_VALUE_EXPECT_MUTABLE(temp_value_arg, return NULL);
 				if(temp_value_arg->type != STS_ARRAY){STS_ERROR_SIMPLE("the remove action requires the first argument to be an array"); return NULL;}
 				if(eval_value->type != STS_NUMBER){STS_ERROR_SIMPLE("the remove action requires the second argument to be an number"); return NULL;}
 					if(eval_value->number < 0.0 || eval_value->number >= temp_value_arg->array.length){STS_ERROR_SIMPLE("could not remove value at the position requested because it is out of bounds of the array"); return NULL;}
@@ -941,9 +969,10 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				EVAL_ARG(args->next); temp_value_arg = eval_value;
 				EVAL_ARG(args->next->next); temp_value = eval_value;
 				EVAL_ARG(args->next->next->next);
-				if(temp_value_arg->type != STS_ARRAY){STS_ERROR_SIMPLE("the insert action requires the first argument to be an array or a string"); return NULL;}
+				STS_VALUE_EXPECT_MUTABLE(temp_value_arg, return NULL);
+				if(temp_value_arg->type != STS_ARRAY){STS_ERROR_SIMPLE("the insert action requires the first argument to be an array"); return NULL;}
 				if(temp_value->type != STS_NUMBER){STS_ERROR_SIMPLE("the insert action requires the second argument to be an number"); return NULL;}
-					if(temp_value->number < 0.0){STS_ERROR_SIMPLE("could not remove value at the position requested because it is below the bounds of the array"); return NULL;}
+					if(temp_value->number < 0.0){STS_ERROR_SIMPLE("could not insert value at the position requested because it is below the bounds of the array"); return NULL;}
 					else { STS_ARRAY_APPEND_INSERT(temp_value_arg, eval_value, (unsigned int)(temp_value->number)); STS_VALUE_REFINC(script, eval_value);}
 				VALUE_FROM_NUMBER(ret, 1.0);
 				if(!sts_value_reference_decrement(script, temp_value_arg)) STS_ERROR_SIMPLE("could not decrement references for first argument in insert action");
@@ -951,6 +980,27 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for third argument in insert action");
 			}
 			else {STS_ERROR_SIMPLE("insert action requires at least 3 arguments"); return NULL;}
+		}
+		ACTION(else if, "replace") /* replaces values in an array */
+		{
+			GOTO_SET(&sts_defaults);
+			if(args->next && args->next->next && args->next->next->next)
+			{
+				EVAL_ARG(args->next); temp_value_arg = eval_value;
+				EVAL_ARG(args->next->next); temp_value = eval_value;
+				EVAL_ARG(args->next->next->next);
+				STS_VALUE_EXPECT_MUTABLE(temp_value_arg, return NULL);
+				if(temp_value_arg->type != STS_ARRAY){STS_ERROR_SIMPLE("the replace action requires the first argument to be an array"); return NULL;}
+				if(temp_value->type != STS_NUMBER){STS_ERROR_SIMPLE("the replace action requires the second argument to be an number"); return NULL;}
+					if(temp_value->number < 0.0 || temp_value->number >= temp_value_arg->array.length){STS_ERROR_SIMPLE("could not replace value at the position requested because it is below the bounds of the array"); return NULL;}
+					else if(!sts_value_reference_decrement(script, temp_value_arg->array.data[(unsigned)temp_value->number])) STS_ERROR_SIMPLE("could not decrement references for value in array");
+					else { temp_value_arg->array.data[(unsigned)temp_value->number] = eval_value; STS_VALUE_REFINC(script, eval_value);}
+				VALUE_FROM_NUMBER(ret, 1.0);
+				if(!sts_value_reference_decrement(script, temp_value_arg)) STS_ERROR_SIMPLE("could not decrement references for first argument in replace action");
+				if(!sts_value_reference_decrement(script, temp_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in replace action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for third argument in replace action");
+			}
+			else {STS_ERROR_SIMPLE("replace action requires at least 3 arguments"); return NULL;}
 		}
 		ACTION(else if, "import") /* import file in the current working directory (NOT WHERE THE SCRIPT IS), if there is no file found, in the system */
 		{
@@ -1175,8 +1225,8 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 		ACTION_BINOP_MULTI(|, {VALUE_FROM_NUMBER(ret, eval_value->number);}, {ret->number = (int)ret->number | (int)eval_value->number;})
 		ACTION_BINOP_MULTI(~, {VALUE_FROM_NUMBER(ret, ~(int)eval_value->number);}, {ret->number = ret->number;})
 		ACTION_BINOP_MULTI(!, {VALUE_FROM_NUMBER(ret, !sts_value_test(eval_value));}, {ret->number = ret->number;})
-		ACTION_BINOP_MULTI(++, {VALUE_FROM_NUMBER(ret, ++eval_value->number);}, {ret->number = ret->number;})
-		ACTION_BINOP_MULTI(--, {VALUE_FROM_NUMBER(ret, --eval_value->number);}, {ret->number = ret->number;})
+		ACTION_BINOP_MULTI(++, {STS_VALUE_EXPECT_MUTABLE(eval_value, return NULL); VALUE_FROM_NUMBER(ret, ++eval_value->number);}, {ret->number = ret->number;})
+		ACTION_BINOP_MULTI(--, {STS_VALUE_EXPECT_MUTABLE(eval_value, return NULL); VALUE_FROM_NUMBER(ret, --eval_value->number);}, {ret->number = ret->number;})
 		ACTION_SINGLE_NUMERIC(script, sin)
 		ACTION_SINGLE_NUMERIC(script, cos)
 		ACTION_SINGLE_NUMERIC(script, tan)
@@ -1317,6 +1367,7 @@ int sts_value_copy(sts_script_t *script, sts_value_t *dest, sts_value_t *source,
 {
 	sts_value_t *temp = NULL; unsigned int i; int ret = 0;
 	if(dest == source) return 0;
+	STS_VALUE_EXPECT_MUTABLE(dest, return 1);
 	switch(dest->type) /* destroy any info in the old dest type */
 	{
 		case STS_ARRAY: for(i = 0; i < dest->array.length; ++i) /* decrement references in array members */
@@ -1403,6 +1454,32 @@ int sts_value_test(sts_value_t *value) /* STS_NIL is always 0 */
 		case STS_BOOLEAN: if(!value->boolean) return 0; break;
 	}
 	return 1;
+}
+
+sts_value_t *sts_value_string_intern(sts_script_t *script, sts_value_t *value)
+{
+	sts_map_row_t *row = NULL;
+	if(value->type != STS_STRING)
+	{
+		STS_ERROR_SIMPLE("cannot intern non-string value");
+		return NULL;
+	}
+	if(!(row = sts_map_get(&script->interned, value->string.data, value->string.length)))
+	{
+		if(!sts_map_add_set(&script->interned, value->string.data, value->string.length, value))
+		{
+			STS_ERROR_SIMPLE("could not intern string");
+			return NULL;
+		}
+		value->readonly = 1;
+	}
+	else
+	{
+		sts_value_reference_decrement(script, value);
+		value = row->value;
+	}
+	STS_VALUE_REFINC(script, value);
+	return value;
 }
 
 sts_map_row_t *sts_map_add_set(sts_map_row_t **row, void *key, unsigned int key_size, void *value)

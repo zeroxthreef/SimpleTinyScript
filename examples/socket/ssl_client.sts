@@ -14,7 +14,7 @@ else {
 		print could not setup ssl client
 	}
 
-	socket-tcp-send $sock "GET / HTTP/1.0\r\nHost: google.com\r\n\r\n"
+	socket-tcp-send $sock "GET / HTTP/1.0\r\nHost: old.reddit.com\r\n\r\n"
 
 	print cool, the host replied (socket-tcp-recv $sock)
 }

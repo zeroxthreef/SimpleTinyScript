@@ -62,6 +62,9 @@ same as ``global`` but works in the local scope (global scope if not in any func
 **string-hash var**<br />
 returns a numeric hash of the string using FNV-1a
 
+**const var**<br />
+marks the value as readonly
+
 **typeof var**<br />
 returns a number of STS_* for the type declared in an enum
 
@@ -115,6 +118,9 @@ removes the value in 'var' at position 'index'. Only works on arrays
 
 **insert var index insert**<br />
 inserts 'insert' into 'var' at position 'index'. only works on arrays
+
+**replace var index insert**<br />
+replaces instead of shallow copies the value at an array index
 
 **import file**<br />
 look for file relative to the interpreter PWD, and if it cant find the file and compiled with cli.c, it will search the system install directory
@@ -234,6 +240,9 @@ returns 1 if the key does and 0 if not
 
 **hashmap-set map key value**<br />
 sets the key if it exists, and if it doesnt it will make a new one to set to 'value'
+
+**hashmap-replace map key value**<br />
+replaces the entire row value and key if it exists, and if it doesnt it will make a new one to set to 'value'
 
 **hashmap-remove map key**<br />
 removes 'key' and its value from 'map'

@@ -699,6 +699,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			
 			EVAL_ARG(args->next);
 			first_arg_value = eval_value;
+			STS_VALUE_EXPECT_MUTABLE(first_arg_value, return NULL);
 
 			args = args->next;
 

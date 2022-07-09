@@ -15,6 +15,7 @@ function test_errors {
 
 function test_hashmap {
     print ============ testing hashmaps ==============
+    local mutate_value "abcdefg"
     local map_empty (hashmap)
     local map (hashmap key1 "hello world" key2 "hello world 2")
 
@@ -40,6 +41,12 @@ function test_hashmap {
     hashmap-remove $map key1
 
     print map with keys after removing key1: (string-value-print $map)
+
+    print testing hashmap-replace with replacing key2 with mutate_value
+    hashmap-replace $map key2 $mutate_value
+    print key2 before the value was mutated: (hashmap-get $map key2)
+    set $mutate_value "this is mutated"
+    print key2 after mutation: (hashmap-get $map key2)
 }
 
 function test_debug_string {
