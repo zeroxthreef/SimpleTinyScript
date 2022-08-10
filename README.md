@@ -223,6 +223,9 @@ return a b64 encoded string
 **base64-decode str**<br />
 return a decoded b64 string
 
+**exit status**<br />
+exits the interpreter with an optional status
+
 The following functions are documentation for ``stdlib.sts``
 ---
 

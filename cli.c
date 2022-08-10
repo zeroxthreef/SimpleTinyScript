@@ -1851,6 +1851,20 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			}
 			else {STS_ERROR_SIMPLE("base64-decode requires a string"); return NULL;}
 		}
+		ACTION(else if, "exit") /* exits the interpreter with a return value */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+				if(eval_value->type == STS_NUMBER )
+					exit(eval_value->number);
+				exit(0);
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in exit action");
+			}
+			exit(0);
+		}
 		
 
 		/* end of sts_string action type */
