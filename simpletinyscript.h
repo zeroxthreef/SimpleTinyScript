@@ -869,7 +869,7 @@ sts_value_t *sts_defaults(sts_script_t *script, sts_value_t *action, sts_node_t 
 			GOTO_SET(&sts_defaults);
 			if(args->next)
 			{
-				EVAL_ARG(args->next); if(eval_value->type == STS_NUMBER){ STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%c", (int)eval_value->number, "", 0); VALUE_INIT(ret, STS_STRING); ret->string.data = temp_str; ret->string.length = temp_uint; }
+				EVAL_ARG(args->next); if(eval_value->type == STS_NUMBER){ STS_STRING_ASSEMBLE_FMT(temp_str, temp_uint, "%c", (int)eval_value->number, "", 0); VALUE_INIT(ret, STS_STRING); ret->string.data = temp_str ? temp_str : sts_memdup("\0", 1); ret->string.length = 1; }
 				else {STS_ERROR_SIMPLE("asc action requires the argument to be a number"); sts_value_reference_decrement(script, eval_value); return NULL;}
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for first argument in asc action");
 			}
