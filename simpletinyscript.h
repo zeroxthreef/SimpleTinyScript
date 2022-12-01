@@ -50,6 +50,7 @@ typedef struct sts_ast_container_t sts_ast_container_t;
 typedef struct sts_name_container_t sts_name_container_t;
 typedef struct sts_map_row_t sts_map_row_t;
 typedef struct sts_scope_t sts_scope_t;
+typedef sts_value_t *(*sts_router_t)(sts_script_t *script, sts_value_t *action, sts_node_t *args, sts_scope_t *locals, sts_value_t **previous);
 
 /* structures */
 
@@ -75,7 +76,8 @@ struct sts_node_t
 	unsigned int line;
 	sts_name_container_t *name;
 	#ifdef STS_GOTO_JIT
-	void *label, *router_id;
+	void *label;
+	sts_router_t router_id;
 	#endif
 };
 
@@ -480,7 +482,12 @@ sts_value_t *sts_eval(sts_script_t *script, sts_node_t *ast, sts_scope_t *locals
 				else if(ast->child->type != STS_NODE_EXPRESSION) /* an expression with a starting value */
 				{
 					if(!(temp = sts_eval(script, ast->child, locals, previous, single, 0))){STS_ERROR_SIMPLE("could not eval action"); return NULL;} /* make an action value for the router. Because it is evaluated, it means any kind of substitution works */
-					if(!(ret = script->router(script, temp, ast->child, locals, previous))){STS_EVAL_ERROR_PRINT; return NULL;} /* decide what to do based off of the starting value */
+					#ifdef STS_GOTO_JIT
+					if(ast->child->router_id)
+						{if(!(ret = ast->child->router_id(script, temp, ast->child, locals, previous))){STS_EVAL_ERROR_PRINT; return NULL;} /* decide what to do based off of the starting value */}
+					else
+					#endif
+						if(!(ret = script->router(script, temp, ast->child, locals, previous))){STS_EVAL_ERROR_PRINT; return NULL;} /* decide what to do based off of the starting value */
 					if(!sts_value_reference_decrement(script, temp)){STS_ERROR_SIMPLE("could not decrement action references"); return NULL;} /* clean up the action value used to control what the router does */
 					EVAL_PREVIOUS_REFDEC(); *previous = ret; STS_VALUE_REFINC(script, ret); /* carry the previous value along the list of expressions */
 				}

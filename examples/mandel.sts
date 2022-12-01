@@ -1,0 +1,56 @@
+local WIDTH 80
+local HEIGHT 24
+local MAXITERS 1070
+local SCALEFACTOR 0.04
+local XOFFSET 0.04
+local YOFFSET 0
+local USEFRAMEBUFFER 0
+local pixtypes " ,.^~+*CO=$%#@"
+
+
+local count 0 # static i guess
+function printpix intensity {
+	local pixnum (- [sizeof $pixtypes] 1)
+	local pixvalue (/ [* $intensity $pixnum] $MAXITERS)
+
+	if(== $count $WIDTH) {
+		stdout-write "\n"
+		set $count 0
+	}
+	++ $count
+	stdout-write [get $pixtypes $pixvalue]
+}
+
+
+# main
+local initial 0
+local end 0
+local xiter 0
+local yiter 0
+local iter 0
+local x 0
+local y 0
+local x0 0
+local y0 0
+local tx 0
+
+print mandelbrot:
+loop(< $yiter $HEIGHT) {
+	set $xiter 0
+	loop(< $xiter $WIDTH) {
+		set $x0 (+ [* (- $xiter [/ $WIDTH 2]) $SCALEFACTOR] $XOFFSET)
+		set $y0 (+ [* (- $yiter [/ $HEIGHT 2]) (* $SCALEFACTOR 2)] $XOFFSET)
+		loop(&& (< [+ (* $x $x) (* $y $y)] 4) (<= $iter $MAXITERS) ) {
+			set $tx (+ [- (* $x $x) (* $y $y)] $x0)
+			set $y [+ (* 2 $x $y) $y0]
+			set $x $tx
+			++ $iter
+		}
+		printpix $iter
+		set $iter 0
+		set $x 0
+		set $y 0
+		++ $xiter
+	}
+	++ $yiter
+}
