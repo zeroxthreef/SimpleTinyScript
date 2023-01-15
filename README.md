@@ -229,6 +229,9 @@ exits the interpreter with an optional status
 **directory-list**<br />
 returns an array of strings in the directory or nil if it doesnt exist
 
+**platform**<br />
+returns 'windows' or 'unix'
+
 The following functions are documentation for ``stdlib.sts``
 ---
 

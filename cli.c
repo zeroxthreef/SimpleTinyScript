@@ -1974,6 +1974,18 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 			}
 			else {STS_ERROR_SIMPLE("directory-list requires a string"); return NULL;}
 		}
+		ACTION(else if, "platform") /* returns the most likely platform */
+		{
+			#ifdef CLI_WINDOWS
+				if(!(ret = sts_value_from_string(script, "windows")))
+			#else
+				if(!(ret = sts_value_from_string(script, "unix")))
+			#endif
+			{
+				fprintf(stderr, "could not create string value in platform action\n");
+				return NULL;
+			}
+		}
 		
 
 		/* end of sts_string action type */
