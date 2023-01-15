@@ -42,6 +42,14 @@ it is much nicer to use with these */
 #include <unistd.h>
 #include <time.h>
 
+#if defined (_WIN64) || defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#include <windows.h>
+#define CLI_WINDOWS
+#else 
+#include <sys/types.h>
+#include <dirent.h>
+#endif
+
 /* =========================================== */
 
 
@@ -1864,6 +1872,107 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for second argument in exit action");
 			}
 			exit(0);
+		}
+		ACTION(else if, "directory-list") /* array of strings containing filenames of a directory string */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				#ifdef CLI_WINDOWS
+				WIN32_FIND_DATA fd;
+				HANDLE hf;
+				char *t_str = NULL;
+				size_t t_str_len = 0;
+				#else
+				DIR *d = NULL;
+				struct dirent *de = NULL;
+				#endif
+
+				EVAL_ARG(args->next);
+
+				if(eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "the directory-list action requires a string\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the directory-list action");
+					return NULL;
+				}
+
+				if(!(ret = sts_value_create(script, STS_ARRAY)))
+				{
+					fprintf(stderr, "could not create array value in directory-list action\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the directory-list action");
+					return NULL;
+				}
+
+				#ifdef CLI_WINDOWS
+					t_str_len = eval_value->string.length + 2;
+					if(!(t_str = calloc(1, t_str_len + 1)))
+					{
+						fprintf(stderr, "could not create t_str directory-list action\n");
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the directory-list action");
+						return NULL;
+					}
+					strncat(t_str, eval_value->string.data, eval_value->string.length);
+					strncat(t_str, "\\*", 2);
+					if((hf = FindFirstFile(t_str, &fd)) == INVALID_HANDLE_VALUE)
+					{
+						sts_value_reference_decrement(script, ret);
+
+						if(!(ret = sts_value_create(script, STS_NIL)))
+						{
+							fprintf(stderr, "could not create nil value in directory-list action\n");
+							free(t_str);
+							if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the directory-list action");
+							return NULL;
+						}
+					}
+					else
+					{
+						do
+						{
+							sts_value_t *str = NULL;
+							if(!(str = sts_value_from_string(script, df.cFileName)))
+							{
+								fprintf(stderr, "could not add string to array value in directory-list action\n");
+								free(t_str);
+								if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the directory-list action");
+								return NULL;
+							}
+
+							sts_array_append_insert(script, ret, str, ret->array.length);
+						} while(FindNextFile(hf, &fd));
+					}
+					free(t_str);
+				#else
+					if(!(d = opendir(eval_value->string.data)))
+					{
+						sts_value_reference_decrement(script, ret);
+
+						if(!(ret = sts_value_create(script, STS_NIL)))
+						{
+							fprintf(stderr, "could not create nil value in directory-list action\n");
+							if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the directory-list action");
+							return NULL;
+						}
+					}
+					else
+						while((de = readdir(d)))
+						{
+							sts_value_t *str = NULL;
+							if(!(str = sts_value_from_string(script, de->d_name)))
+							{
+								fprintf(stderr, "could not add string to array value in directory-list action\n");
+								if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the directory-list action");
+								return NULL;
+							}
+
+							sts_array_append_insert(script, ret, str, ret->array.length);
+						}
+				#endif
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the directory-list action");
+			}
+			else {STS_ERROR_SIMPLE("directory-list requires a string"); return NULL;}
 		}
 		
 

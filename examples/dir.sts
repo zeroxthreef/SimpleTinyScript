@@ -1,0 +1,17 @@
+function recurse dir {
+	local files [directory-list $dir]
+	local i 0
+	
+	loop (< $i [sizeof $files]) {
+		local path [string $dir / (get $files $i)]
+
+		if(&& [!= (get $files $i) .] [!= (get $files $i) ..]) {
+			print looking at: $path
+			recurse $path
+		}
+
+		++ $i
+	}
+}
+
+recurse .

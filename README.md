@@ -226,6 +226,9 @@ return a decoded b64 string
 **exit status**<br />
 exits the interpreter with an optional status
 
+**directory-list**<br />
+returns an array of strings in the directory or nil if it doesnt exist
+
 The following functions are documentation for ``stdlib.sts``
 ---
 
