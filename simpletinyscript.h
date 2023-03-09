@@ -392,8 +392,9 @@ sts_node_t *sts_parse(sts_script_t *script, sts_node_t *parent, char *script_tex
 				start = ++(*offset);
 				while(1)
 				{
-					while(script_text[*offset] && script_text[*offset] != '\"')(*offset)++;
-					if(!script_text[*offset] || ((*offset) > start ? script_text[(*offset) - 1] : 0) != '\\') break;
+					while(script_text[*offset] && script_text[*offset] != '\"' && script_text[*offset] != '\n')(*offset)++;
+					if(script_text[*offset] == '\n') (*line)++;
+					else if(!script_text[*offset] || ((*offset) > start ? script_text[(*offset) - 1] : 0) != '\\') break;
 					(*offset)++;
 				}
 				if(!STS_CREATE_VALUE(value)) PARSER_ERROR("could not create value"); /* create new string value, duplicate the string from the script, and add it to the expression */
