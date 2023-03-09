@@ -57,6 +57,10 @@ it is much nicer to use with these */
 	#define CLI_ALLOW_SYSTEM 1
 #endif
 
+#if defined(CLI_SYSTEM_SHELLPREFIX) && !defined(CLI_ALLOW_SYSTEM)
+	#undef CLI_SYSTEM_SHELLPREFIX
+#endif
+
 #define PS1 "#"
 
 #ifndef INSTALL_DIR
@@ -1986,14 +1990,30 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 				return NULL;
 			}
 		}
-		
+		#ifdef CLI_SYSTEM_SHELLPREFIX
+		ACTION(else if, "shell")
+		{
+			GOTO_SET(&cli_actions);
+			ACTION_BEGIN_ARGLOOP
+				switch(eval_value->type)
+				{
+					case STS_NUMBER: STS_STRING_ASSEMBLE_FMT(temp_str, size, "%1.17g", eval_value->number, " ", 1); break;
+					case STS_BOOLEAN: STS_STRING_ASSEMBLE_FMT(temp_str, size, "%s", eval_value->boolean ? "true" : "false", " ", 1); break;
+					case STS_STRING: STS_STRING_ASSEMBLE(temp_str, size, "\"", 1, "", 0); STS_STRING_ASSEMBLE(temp_str, size, eval_value->string.data, eval_value->string.length, "\" ", 2); break;
+				}
+			ACTION_END_ARGLOOP
 
+			VALUE_FROM_NUMBER(ret, (double)system(temp_str));
+
+			free(temp_str);
+		}
+		#endif
 		/* end of sts_string action type */
 	}
 
 	if(!ret)
 		ret = sts_defaults(script, action, args, locals, previous);
-	#if CLI_ALLOW_SYSTEM
+	#if CLI_ALLOW_SYSTEM && !defined(CLI_SYSTEM_SHELLPREFIX)
 	if(!ret && action->type == STS_STRING) /* execute a shell command instead */
 	{
 		STS_STRING_ASSEMBLE(temp_str, size, action->string.data, action->string.length, " ", 1);
