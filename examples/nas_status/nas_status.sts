@@ -1,0 +1,183 @@
+#!/bin/env sts
+# simple nas status script that is only active when viewed
+# needs aha, neofetch, and root privs
+
+import stdlib.sts
+
+# add drives and other info to test here
+local config [hashmap	\
+		drives [array "/dev/sda"]	\
+		file "./test_output.html"	\
+		delay (* 1 24 60 60)	\
+	]
+
+local template "
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>NAS Status</title>
+		<style>
+			html, body {
+				margin: 0;
+				height: 100%;
+				width: 100%;
+				font-family: Arial, Helvetica, sans-serif;
+			}
+			table {
+				border: 1px solid black;
+			}
+			#top {
+				background-color: red;
+				color: white;
+				padding: 0.3%;
+			}
+			#middle {
+				background-color: #242424;
+				color: white;
+				padding: 0.3%;
+				overflow: auto;
+			}
+			#end_container {
+				width: 40%;
+				min-height: 100vh;
+			}
+			#end {
+				text-align:left;
+				background-color: black;
+				color: white;
+				padding: 0.3%;
+			}
+		</style>
+	</head>
+	<body>
+		<center>
+			<div id='top'>
+				<h1>NAS Status</h1>
+				<b>(as of [date])<b>
+				<marquee><b><i>Monitoring [drives]</i></b></marquee>
+			</div>
+			<div id='middle'>
+				[middle]
+			</div>
+			<div id='end_container'>
+				<div id='end'>
+					[terminal]
+				</div>
+			</div>
+		</center>
+	</body>
+</html>
+"
+
+function strip_empty string_array {
+	local ret [array ]
+	local i 0
+
+	loop (< $i [sizeof $string_array]) {
+		if(sizeof [get $string_array $i]) {
+			insert $ret $i [get $string_array $i]
+		}
+		++ $i
+	}
+
+	pass $ret
+}
+
+function neofetch_exec {
+	local ret ""
+	pipeout $ret neofetch | aha --black
+	pass $ret
+}
+
+function date_exec {
+	local ret ""
+	pipeout $ret date
+	pass $ret
+}
+
+# ID#", "ATTRIBUTE_NAME", "FLAG", "VALUE", "WORST", "THRESH", "TYPE", "UPDATED", "WHEN_FAILED", "RAW_VALUE
+
+function render_smart_attribute line {
+	local ret "<tr>"
+	local split [strip_empty (string-tokenize $line " ")]
+	set $ret [string $ret "<td><b>" (get $split 1) "</b></td><td>" (get $split 6) "</td><td>(higher is better)<progress max='" (get $split 4) "' value='" (get $split 3) "'></progress></td><td>" (get $split 9) "</td>"]
+
+	set $ret [string $ret "</tr>"]
+	pass $ret
+}
+
+function native_drive_health_parse {
+	local ret ""
+	local raw ""
+	local name ""
+	local lines [array]
+	local i 0
+	local j 0
+
+	loop (< $i [sizeof [hashmap-get $config drives]]) {
+		set $name (get [hashmap-get $config drives] $i)
+		pipeout $raw smartctl -A $name
+		set $lines [string-tokenize $raw "\n"]
+
+		set $ret [string $ret "<h2>" $name "</h2><table>"]
+
+		set $j 7 # skip into smartctl output
+		loop (&& (< $j [sizeof $lines]) (sizeof [get $lines $j])) {
+			set $ret [string $ret (render_smart_attribute [get $lines $j])]
+			++ $j
+		}
+
+		set $ret [string $ret "</table>"]
+
+		++ $i
+	}
+
+	set $ret [string $ret (df_render)]
+
+	pass $ret
+}
+
+function df_render {
+	local ret ""
+	local raw ""
+	local lines [array]
+	local line $nil
+	local i 1
+
+	pipeout $raw df
+	set $lines [string-tokenize $raw "\n"]
+
+	set $ret [string $ret "<h2>usage</h2><table>"]
+
+	loop (&& (< $i [sizeof $lines]) (sizeof [get $lines $i])) {
+		set $line [strip_empty (string-tokenize [get $lines $i] " ")]
+		set $ret [string $ret "<tr><td>" (get $line 0) "</td><td><progress max='" (get $line 3) "' value='" (get $line 2) "'></progress></td></tr>"]
+		++ $i
+	}
+
+	set $ret [string $ret "</table>"]
+
+	pass $ret
+}
+
+function main args {
+	local output ""
+	
+	loop 1 {
+		print =================================
+		set $output [copy $template]
+
+		set $output [string-replace $output "[date]" (date_exec)]
+		set $output [string-replace $output "[drives]" (string-combine [hashmap-get $config drives] ", ")]
+		set $output [string-replace $output "[middle]" (native_drive_health_parse)]
+		set $output [string-replace $output "[terminal]" (neofetch_exec)]
+
+		file-write [hashmap-get $config file] $output
+
+		sleep [hashmap-get $config delay]
+	}
+
+	pass 0
+}
+
+main $args
