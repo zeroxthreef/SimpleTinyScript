@@ -1,0 +1,17 @@
+import stdlib.sts
+
+local port 3621
+local sock (socket-udp $port 0) #make a blocking socket
+local buffer $nil
+local size $nil
+local message "hello world :)"
+
+if(== $sock $nil) {
+	print could not open socket
+}
+else {
+	socket-set-broadcast $sock 1
+	set $size (string [num2bin (sizeof $message)])
+	set $buffer (string [num2bin 0x214D4E53] [get $size 0] [get $size 1] $message)
+	socket-udp-send $sock "192.168.1.255" $port $buffer
+}
