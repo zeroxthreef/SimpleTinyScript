@@ -523,6 +523,25 @@ function string-replace string replacee replacement {
 
 # uncategorized =========================
 
+function num2bin number {
+    local ret (string "")
+    local i 0
+    local observe 0
+
+    if(== [typeof $number] [STS_NUMBER]) {
+        loop (< $i 4) {
+            set $observe [& (>> $number [* $i 8]) 0xFF]
+            set $ret (string $ret [asc $observe])
+            ++ $i
+        }
+    }
+    else {
+        set $ret $nil
+    }
+
+    pass $ret
+}
+
 function getpwd self {
     local str $nil
     local pos 0

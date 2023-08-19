@@ -5,10 +5,23 @@
 import stdlib.sts
 
 # add drives and other info to test here
+# broadcast_event name acceptable_threshold
 local config [hashmap	\
+		identity "test_nas_hostname"	\
 		drives [array "/dev/sda"]	\
-		file "~/test_output.html"	\
+		file "/mnt/storage/archive/nas_health.html"	\
 		delay (* 1 24 60 60)	\
+		broadcast_addr "192.168.1.255"	\
+		broadcast_port 3621	\
+		broadcast_event [hashmap	\
+			Raw_Read_Error_Rate 0	\
+			Bad_Block_Count 0	\
+			Bad_Cluster_Table_Count 0	\
+			Seek_Error_Rate 0	\
+			Spin_Retry_Count 0	\
+			Offline_Uncorrectable 0	\
+			UDMA_CRC_Error_Count 0	\
+		]	\
 	]
 
 local template "
@@ -69,6 +82,8 @@ local template "
 </html>
 "
 
+local sock $nil
+
 function strip_empty string_array {
 	local ret [array ]
 	local i 0
@@ -84,15 +99,27 @@ function strip_empty string_array {
 }
 
 function neofetch_exec {
-	local ret ""
+	local ret (string "")
 	pipeout $ret neofetch | aha --black
 	pass $ret
 }
 
 function date_exec {
-	local ret ""
+	local ret (string "")
 	pipeout $ret date
 	pass $ret
+}
+
+function broadcast_warning_test attribute value {
+	local message $nil
+	if(hashmap-exists (hashmap-get $config broadcast_event) $attribute) {
+		if(< [hashmap-get (hashmap-get $config broadcast_event) $attribute] $value) {
+			set $message (string [hashmap-get $config identity] ": " "smart attribute " $attribute " above threshold at, " $value)
+			broadcast $message
+			stderr-write $message
+		}
+	}
+	pass $nil
 }
 
 # ID#", "ATTRIBUTE_NAME", "FLAG", "VALUE", "WORST", "THRESH", "TYPE", "UPDATED", "WHEN_FAILED", "RAW_VALUE
@@ -100,7 +127,10 @@ function date_exec {
 function render_smart_attribute line {
 	local ret "<tr>"
 	local split [strip_empty (string-tokenize $line " ")]
-	set $ret [string $ret "<td><b>" (get $split 1) "</b></td><td>" (get $split 6) "</td><td>(higher is better)<progress max='" (get $split 4) "' value='" (get $split 3) "'></progress></td><td>" (get $split 9) "</td>"]
+
+	broadcast_warning_test (get $split 1) (get $split 9)
+
+	set $ret [string $ret "<td><b>" (get $split 1) "</b></td><td>" (get $split 6) "</td><td><progress max='" (get $split 4) "' value='" (get $split 3) "'></progress></td><td>" (get $split 9) "</td>"]
 
 	set $ret [string $ret "</tr>"]
 	pass $ret
@@ -108,7 +138,7 @@ function render_smart_attribute line {
 
 function native_drive_health_parse {
 	local ret ""
-	local raw ""
+	local raw (string "")
 	local name ""
 	local lines [array]
 	local i 0
@@ -139,7 +169,7 @@ function native_drive_health_parse {
 
 function df_render {
 	local ret ""
-	local raw ""
+	local raw (string "")
 	local lines [array]
 	local line $nil
 	local i 1
@@ -160,8 +190,40 @@ function df_render {
 	pass $ret
 }
 
+function init_broadcast {
+	local ret 0
+	set $sock (socket-udp [hashmap-get $config broadcast_port] 0)
+
+	if(== $sock $nil) {
+		print could not open socket
+		set $ret 1
+	}
+	else {
+		socket-set-broadcast $sock 1
+	}
+
+	pass $ret
+}
+
+function broadcast message {
+	local ret 0
+	local buffer $nil
+	local size $nil
+
+	set $size (string [num2bin (sizeof $message)])
+	set $buffer (string [num2bin 0x214D4E53] [get $size 0] [get $size 1] $message)
+	set $ret [socket-udp-send $sock (hashmap-get $config broadcast_addr) (hashmap-get $config broadcast_port) $buffer]
+
+	pass $ret
+}
+
 function main args {
 	local output ""
+
+	if (init_broadcast) {
+		stderr-write unable to initialize broadcast socket
+		exit 1
+	}
 	
 	loop 1 {
 		print =================================

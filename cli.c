@@ -1193,7 +1193,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 		ACTION(else if, "socket-udp") /* creates new udp socket. args are (port, non_blocking) */
 		{
 			GOTO_SET(&cli_actions);
-			if(args->next && args->next->next && args->next->next->next)
+			if(args->next && args->next->next)
 			{
 				EVAL_ARG(args->next);
 				first_arg_value = eval_value;
@@ -1202,7 +1202,7 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 
 				if(first_arg_value->type != STS_NUMBER || second_arg_value->type != STS_NUMBER)
 				{
-					fprintf(stderr, "the socket-udp action requires 3 number arguments\n");
+					fprintf(stderr, "the socket-udp action requires 2 number arguments\n");
 					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp action");
 					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-udp action");
 					return NULL;
@@ -1234,6 +1234,36 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 				if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-udp action");
 			}
 			else {STS_ERROR_SIMPLE("socket-udp action requires 3 arguments"); return NULL;}
+		}
+		ACTION(else if, "socket-set-broadcast") /* applies SO_BROADCAST socket option, (socket state) */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next && args->next->next)
+			{
+				int opt;
+				EVAL_ARG(args->next);
+				first_arg_value = eval_value;
+				EVAL_ARG(args->next->next);
+				second_arg_value = eval_value;
+
+				if(!IS_CLI_SOCKET(first_arg_value) || second_arg_value->type != STS_NUMBER)
+				{
+					fprintf(stderr, "the socket-set-broadcast action requires a socket argument and state\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-set-broadcast action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-set-broadcast action");
+					return NULL;
+				}
+				
+				opt = second_arg_value->number;
+				if(setsockopt(CLI_SOCKET(first_arg_value)->socket.handle, SOL_SOCKET, SO_BROADCAST, &opt, sizeof(int)))
+					VALUE_FROM_NUMBER(ret, 1);
+				else
+					VALUE_FROM_NUMBER(ret, 0);
+
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-set-broadcast action");
+				if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-set-broadcast action");
+			}
+			else {STS_ERROR_SIMPLE("socket-set-broadcast action requires 2 arguments"); return NULL;}
 		}
 		ACTION(else if, "socket-tcp-connect") /* connects to tcp server (socket, host, port) */
 		{
@@ -1408,6 +1438,140 @@ sts_value_t *cli_actions(sts_script_t *script, sts_value_t *action, sts_node_t *
 				
 
 				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-tcp-recv action");
+			}
+			else {STS_ERROR_SIMPLE("socket-tcp-send action requires a socket"); return NULL;}
+		}
+		ACTION(else if, "socket-udp-send") /* sends a string buffer to the host in the socket (socket, destination address, destination port, data) */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next && args->next->next && args->next->next->next  && args->next->next->next->next)
+			{
+				EVAL_ARG(args->next);
+				first_arg_value = eval_value;
+				EVAL_ARG(args->next->next);
+				second_arg_value = eval_value;
+				EVAL_ARG(args->next->next->next);
+				third_arg_value = eval_value;
+				EVAL_ARG(args->next->next->next->next);
+
+				if(!IS_CLI_SOCKET(first_arg_value) || second_arg_value->type != STS_STRING || third_arg_value->type != STS_NUMBER || eval_value->type != STS_STRING)
+				{
+					fprintf(stderr, "the socket-udp-send action requires a socket, the destination, destination port, and the data to send\n");
+					if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp-send action");
+					if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-udp-send action");
+					if(!sts_value_reference_decrement(script, third_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the third argument in the socket-udp-send action");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the fourth argument in the socket-udp-send action");
+					return NULL;
+				}
+
+				if(zed_net_get_address(&address, second_arg_value->string.data, third_arg_value->number))
+				{
+					fprintf(stderr, "could not get the address in socket-udp-send: %s\n", zed_net_get_error());
+					VALUE_FROM_NUMBER(ret, -1);
+				}
+				else
+					VALUE_FROM_NUMBER(ret, zed_net_udp_socket_send(&CLI_SOCKET(first_arg_value)->socket, address, eval_value->string.data, eval_value->string.length));
+
+				if(!sts_value_reference_decrement(script, first_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp-send action");
+				if(!sts_value_reference_decrement(script, second_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the second argument in the socket-udp-send action");
+				if(!sts_value_reference_decrement(script, third_arg_value)) STS_ERROR_SIMPLE("could not decrement references for the third argument in the socket-udp-send action");
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the fourth argument in the socket-udp-send action");
+			}
+			else {STS_ERROR_SIMPLE("socket-udp-send action requires a socket and a data string"); return NULL;}
+		}
+		ACTION(else if, "socket-udp-recv") /* returns a string of data from the socket. ret of 1 means would block, -1 means error, string is data */
+		{
+			GOTO_SET(&cli_actions);
+			if(args->next)
+			{
+				EVAL_ARG(args->next);
+
+				if(!IS_CLI_SOCKET(eval_value))
+				{
+					fprintf(stderr, "the socket-udp-recv action requires a socket and the data to send\n");
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp-recv action");
+					return NULL;
+				}
+
+				/* first check if it would block and return a 1 instead of a string */
+
+				if(zed_net_check_would_block(&CLI_SOCKET(eval_value)->socket) == 1)
+				{
+					if(!(ret = sts_value_from_number(script, 1)))
+					{
+						STS_ERROR_SIMPLE("could not create number retval in socket-udp-recv");
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp-recv action");
+						return NULL;
+					}
+
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp-recv action");
+
+					return ret;
+				}
+
+				do
+				{
+					if(zed_net_check_would_block(&CLI_SOCKET(eval_value)->socket))
+						break;
+
+					temp_int = zed_net_udp_socket_receive(&CLI_SOCKET(eval_value)->socket, &address, buf, sizeof(buf));
+					
+					if(temp_int <= 0)
+					 break;
+
+					/* this is bad, but this whole project is for personal use primarily */
+					if(!(temp_str = realloc(temp_str, temp_ulong + temp_int + 1)))
+					{
+						STS_ERROR_SIMPLE("could not resize temporary buffer in socket-udp-recv");
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp-recv action");
+						return NULL;
+					}
+
+					memcpy(&temp_str[temp_ulong], buf, temp_int);
+
+					temp_ulong += temp_int;
+					temp_str[temp_ulong] = 0x0;
+				} while(temp_int == sizeof(buf));
+
+
+				/* return a number instead of a string */
+				if(temp_int == -1)
+				{
+					if(!(ret = sts_value_from_number(script, -1)))
+					{
+						STS_ERROR_SIMPLE("could not create number retval in socket-udp-recv");
+						if(temp_str) free(temp_str);
+						if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp-recv action");
+						return NULL;
+					}
+
+					if(temp_str) free(temp_str);
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp-recv action");
+
+					return ret;
+				}
+				/* create a string with the recieved data */
+				else if(temp_uint != -1 && !(ret = sts_value_create(script, STS_STRING)))
+				{
+					STS_ERROR_SIMPLE("could not create string retval in socket-udp-recv");
+					if(temp_str) free(temp_str);
+					if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp-recv action");
+					return NULL;
+				}
+
+				if(temp_str)
+				{
+					ret->string.length = temp_ulong;
+					ret->string.data = temp_str;
+				}
+				else
+				{
+					ret->string.length = 0;
+					ret->string.data = sts_memdup("", 0);
+				}
+				
+
+				if(!sts_value_reference_decrement(script, eval_value)) STS_ERROR_SIMPLE("could not decrement references for the first argument in the socket-udp-recv action");
 			}
 			else {STS_ERROR_SIMPLE("socket-tcp-send action requires a socket"); return NULL;}
 		}

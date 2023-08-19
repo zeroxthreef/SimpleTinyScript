@@ -184,6 +184,9 @@ creates a tcp socket, and if creating a server socket, set listening to 1
 **socket-udp port non_blocking**<br />
 creates a udp socket
 
+**socket-set-broadcast socket state_0_or_1**<br />
+apply SO_BROADCAST
+
 **socket-tcp-connect socket host port**<br />
 connect to a tcp server with the supplied arguments. Returns 1 if the address is unknown, 2 if the host didnt connect, and 0 if successful
 
@@ -191,6 +194,12 @@ connect to a tcp server with the supplied arguments. Returns 1 if the address is
 sends string buffer to host. Returns the amount of sent bytes or -1 on error
 
 **socket-tcp-recv socket**<br />
+returns a string buffer if successful, -1 on error, or 1 if the socket would block on a nonblocking port
+
+**socket-udp-send socket destination_address destination_port data**<br />
+sends string buffer to host. Returns the amount of sent bytes or -1 on error
+
+**socket-udp-recv socket**<br />
 returns a string buffer if successful, -1 on error, or 1 if the socket would block on a nonblocking port
 
 **socket-tcp-would-block socket**<br />
